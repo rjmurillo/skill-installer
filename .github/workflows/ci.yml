@@ -61,3 +61,6 @@ jobs:
 
       - name: Check formatting
         run: uv run ruff format --check src tests
+
+      - name: Check cyclomatic complexity
+        run: uv run radon cc src --min C --show-complexity
