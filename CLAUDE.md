@@ -1,42 +1,81 @@
-# CLAUDE.md
-
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+# Claude Code Instructions
 
 ## Project Overview
 
-skill-installer is a Python project for installing and managing Claude Code skills.
+Universal skill/agent installer for AI coding platforms (Claude Code, VS Code, Copilot CLI).
 
-## Development Setup
+## Technology Stack
 
-```bash
-# Create virtual environment
-python -m venv .venv
-source .venv/bin/activate  # Linux/macOS
-# .venv\Scripts\activate   # Windows
-
-# Install dependencies (when pyproject.toml exists)
-pip install -e ".[dev]"
-```
-
-## Commands
-
-```bash
-# Run tests
-pytest
-
-# Run single test
-pytest tests/test_file.py::test_function -v
-
-# Type checking
-mypy src/
-
-# Linting
-ruff check .
-
-# Format code
-ruff format .
-```
+- Python 3.10+
+- Typer (CLI framework)
+- Rich (TUI, tables, progress)
+- PyYAML (frontmatter parsing)
+- GitPython (clone, fetch)
+- Pydantic (config validation)
 
 ## Project Structure
 
-This is a new project. As it develops, structure will be added here.
+```text
+src/skill_installer/
+    __init__.py          # Package init, version
+    __main__.py          # Entry point
+    cli.py               # Typer CLI commands
+    registry.py          # Source/installed JSON management
+    discovery.py         # Find content in repositories
+    transform.py         # Cross-platform conversion
+    install.py           # File operations, tracking
+    tui.py               # Rich TUI components
+    gitops.py            # Git clone/fetch
+    platforms/
+        __init__.py
+        claude.py        # Claude Code paths/format
+        vscode.py        # VS Code paths/format
+        copilot.py       # Copilot CLI paths/format
+tests/
+    test_registry.py
+    test_discovery.py
+    test_transform.py
+    test_install.py
+```
+
+## Code Standards
+
+- Type hints on all functions
+- Docstrings for public functions
+- No nested code (max 2 levels)
+- Cyclomatic complexity under 10
+- 100% test coverage goal
+
+## Running Tests
+
+```bash
+uv run pytest
+uv run pytest --cov
+```
+
+## Key Modules
+
+### registry.py
+
+Manages `~/.skill-installer/sources.json` and `installed.json`.
+
+### discovery.py
+
+Finds agents, skills, commands in source repositories.
+
+### transform.py
+
+Converts between platform formats (frontmatter, syntax).
+
+### platforms/
+
+Platform-specific logic (paths, validation, format).
+
+## Dependencies
+
+See `pyproject.toml` for full list. Key ones:
+
+- typer[all]: CLI with auto-completion
+- rich: Beautiful terminal output
+- pydantic: Config validation
+- gitpython: Git operations
