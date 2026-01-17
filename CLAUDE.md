@@ -1,5 +1,7 @@
 # Claude Code Instructions
 
+This document uses RFC 2119 keywords: MUST, MUST NOT, SHOULD, SHOULD NOT, MAY.
+
 ## Project Overview
 
 Universal skill/agent installer for AI coding platforms (Claude Code, VS Code, Copilot CLI).
@@ -44,7 +46,7 @@ tests/
 - Docstrings for public functions
 - No nested code (max 2 levels)
 - Cyclomatic complexity under 10
-- 100% test coverage goal
+- All tests MUST have 100% block code coverage
 
 ## Running Tests
 
