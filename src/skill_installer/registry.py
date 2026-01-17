@@ -19,6 +19,59 @@ class SourcePaths(BaseModel):
     pass
 
 
+class MarketplaceOwner(BaseModel):
+    """Owner information for a marketplace."""
+
+    name: str
+    email: str = ""
+
+
+class MarketplaceMetadata(BaseModel):
+    """Metadata for a marketplace."""
+
+    description: str = ""
+    version: str = "1.0.0"
+
+
+class MarketplacePlugin(BaseModel):
+    """A plugin within a marketplace."""
+
+    name: str
+    description: str = ""
+    source: str = "./"
+    strict: bool = False
+    skills: list[str] = Field(default_factory=list)
+
+
+class MarketplaceManifest(BaseModel):
+    """Marketplace manifest from .claude-plugin/marketplace.json."""
+
+    name: str
+    owner: MarketplaceOwner | None = None
+    metadata: MarketplaceMetadata = Field(default_factory=MarketplaceMetadata)
+    plugins: list[MarketplacePlugin] = Field(default_factory=list)
+
+    @classmethod
+    def from_file(cls, path: Path) -> "MarketplaceManifest":
+        """Load marketplace manifest from a JSON file.
+
+        Args:
+            path: Path to marketplace.json file.
+
+        Returns:
+            Parsed MarketplaceManifest.
+
+        Raises:
+            FileNotFoundError: If file doesn't exist.
+            ValueError: If JSON is invalid.
+        """
+        if not path.exists():
+            raise FileNotFoundError(f"Marketplace manifest not found: {path}")
+
+        data = json.loads(path.read_text())
+        return cls.model_validate(data)
+
+
 class Source(BaseModel):
     """A registered source repository."""
 
@@ -30,6 +83,7 @@ class Source(BaseModel):
     paths: SourcePaths = Field(default_factory=SourcePaths)
     platforms: list[str] = Field(default_factory=lambda: ["claude", "vscode"])
     last_sync: datetime | None = Field(default=None, alias="lastSync")
+    marketplace_enabled: bool = Field(default=False, alias="marketplaceEnabled")
 
 
 class SourceRegistry(BaseModel):

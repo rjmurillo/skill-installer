@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -9,6 +10,10 @@ import pytest
 
 from skill_installer.registry import (
     InstalledItem,
+    MarketplaceManifest,
+    MarketplaceMetadata,
+    MarketplaceOwner,
+    MarketplacePlugin,
     RegistryManager,
     Source,
     SourceRegistry,
@@ -228,3 +233,133 @@ class TestRegistryManager:
 
         platform_items = temp_registry.list_installed(platform="claude")
         assert len(platform_items) == 1
+
+
+class TestMarketplaceOwner:
+    """Tests for MarketplaceOwner model."""
+
+    def test_owner_with_email(self) -> None:
+        """Test MarketplaceOwner with email."""
+        owner = MarketplaceOwner(name="Test Author", email="test@example.com")
+        assert owner.name == "Test Author"
+        assert owner.email == "test@example.com"
+
+    def test_owner_without_email(self) -> None:
+        """Test MarketplaceOwner without email defaults to empty string."""
+        owner = MarketplaceOwner(name="Test Author")
+        assert owner.name == "Test Author"
+        assert owner.email == ""
+
+
+class TestMarketplaceMetadata:
+    """Tests for MarketplaceMetadata model."""
+
+    def test_metadata_defaults(self) -> None:
+        """Test MarketplaceMetadata default values."""
+        metadata = MarketplaceMetadata()
+        assert metadata.description == ""
+        assert metadata.version == "1.0.0"
+
+    def test_metadata_with_values(self) -> None:
+        """Test MarketplaceMetadata with custom values."""
+        metadata = MarketplaceMetadata(description="Test marketplace", version="2.0.0")
+        assert metadata.description == "Test marketplace"
+        assert metadata.version == "2.0.0"
+
+
+class TestMarketplacePlugin:
+    """Tests for MarketplacePlugin model."""
+
+    def test_plugin_minimal(self) -> None:
+        """Test MarketplacePlugin with minimal fields."""
+        plugin = MarketplacePlugin(name="test-plugin")
+        assert plugin.name == "test-plugin"
+        assert plugin.description == ""
+        assert plugin.source == "./"
+        assert plugin.strict is False
+        assert plugin.skills == []
+
+    def test_plugin_with_skills(self) -> None:
+        """Test MarketplacePlugin with skills."""
+        plugin = MarketplacePlugin(
+            name="document-skills",
+            description="Document processing",
+            skills=["./skills/pdf", "./skills/docx"],
+        )
+        assert plugin.name == "document-skills"
+        assert len(plugin.skills) == 2
+
+
+class TestMarketplaceManifest:
+    """Tests for MarketplaceManifest model."""
+
+    def test_manifest_minimal(self) -> None:
+        """Test MarketplaceManifest with minimal fields."""
+        manifest = MarketplaceManifest(name="test-marketplace")
+        assert manifest.name == "test-marketplace"
+        assert manifest.owner is None
+        assert manifest.metadata.description == ""
+        assert manifest.plugins == []
+
+    def test_manifest_full(self) -> None:
+        """Test MarketplaceManifest with all fields."""
+        manifest = MarketplaceManifest(
+            name="test-marketplace",
+            owner=MarketplaceOwner(name="Test Author", email="test@example.com"),
+            metadata=MarketplaceMetadata(description="Test", version="1.0.0"),
+            plugins=[MarketplacePlugin(name="test-plugin", skills=["./skills/test"])],
+        )
+        assert manifest.name == "test-marketplace"
+        assert manifest.owner is not None
+        assert manifest.owner.name == "Test Author"
+        assert len(manifest.plugins) == 1
+
+    def test_manifest_from_file(self, tmp_path: Path) -> None:
+        """Test loading MarketplaceManifest from file."""
+        manifest_data = {
+            "name": "test-marketplace",
+            "owner": {"name": "Test Author", "email": "test@example.com"},
+            "metadata": {"description": "Test marketplace", "version": "1.0.0"},
+            "plugins": [
+                {"name": "test-plugin", "skills": ["./skills/pdf"]}
+            ],
+        }
+        manifest_file = tmp_path / "marketplace.json"
+        manifest_file.write_text(json.dumps(manifest_data))
+
+        manifest = MarketplaceManifest.from_file(manifest_file)
+        assert manifest.name == "test-marketplace"
+        assert manifest.owner is not None
+        assert manifest.owner.name == "Test Author"
+        assert len(manifest.plugins) == 1
+
+    def test_manifest_from_file_not_found(self, tmp_path: Path) -> None:
+        """Test loading MarketplaceManifest from non-existent file."""
+        manifest_file = tmp_path / "nonexistent.json"
+        with pytest.raises(FileNotFoundError):
+            MarketplaceManifest.from_file(manifest_file)
+
+    def test_manifest_from_file_invalid_json(self, tmp_path: Path) -> None:
+        """Test loading MarketplaceManifest from invalid JSON."""
+        manifest_file = tmp_path / "invalid.json"
+        manifest_file.write_text("{ invalid json }")
+        with pytest.raises(json.JSONDecodeError):
+            MarketplaceManifest.from_file(manifest_file)
+
+
+class TestSourceMarketplace:
+    """Tests for Source marketplace_enabled field."""
+
+    def test_source_marketplace_default(self) -> None:
+        """Test Source marketplace_enabled defaults to False."""
+        source = Source(name="test", url="https://github.com/test/repo")
+        assert source.marketplace_enabled is False
+
+    def test_source_marketplace_enabled(self) -> None:
+        """Test Source with marketplace_enabled set."""
+        source = Source(
+            name="skills",
+            url="https://github.com/anthropics/skills",
+            marketplace_enabled=True,
+        )
+        assert source.marketplace_enabled is True

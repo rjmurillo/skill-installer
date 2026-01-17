@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -9,7 +10,7 @@ from typing import TYPE_CHECKING
 import yaml
 
 if TYPE_CHECKING:
-    pass
+    from skill_installer.registry import MarketplaceManifest
 
 
 @dataclass
@@ -28,6 +29,8 @@ class Discovery:
     """Discovers content in source repositories."""
 
     SKILL_PATTERN = "SKILL.md"
+    MARKETPLACE_DIR = ".claude-plugin"
+    MARKETPLACE_FILE = "marketplace.json"
     # Directories to skip during auto-discovery
     SKIP_DIRS = {".git", "node_modules", "__pycache__", ".venv", "venv", ".tox", "dist", "build"}
     # Files to skip (common non-agent markdown files)
@@ -37,10 +40,67 @@ class Discovery:
         """Initialize discovery."""
         pass
 
+    def is_marketplace_repo(self, repo_path: Path) -> bool:
+        """Check if a repository is marketplace-enabled.
+
+        Args:
+            repo_path: Path to the repository root.
+
+        Returns:
+            True if marketplace.json exists.
+        """
+        marketplace_path = repo_path / self.MARKETPLACE_DIR / self.MARKETPLACE_FILE
+        return marketplace_path.exists()
+
+    def load_marketplace_manifest(self, repo_path: Path) -> MarketplaceManifest | None:
+        """Load and parse marketplace manifest.
+
+        Args:
+            repo_path: Path to the repository root.
+
+        Returns:
+            Parsed MarketplaceManifest or None if not found/invalid.
+        """
+        from skill_installer.registry import MarketplaceManifest
+
+        marketplace_path = repo_path / self.MARKETPLACE_DIR / self.MARKETPLACE_FILE
+        if not marketplace_path.exists():
+            return None
+
+        try:
+            return MarketplaceManifest.from_file(marketplace_path)
+        except (json.JSONDecodeError, ValueError):
+            return None
+
+    def discover_from_marketplace(self, repo_path: Path) -> list[DiscoveredItem]:
+        """Discover items using marketplace manifest.
+
+        Args:
+            repo_path: Path to the repository root.
+
+        Returns:
+            List of discovered items from marketplace plugins.
+        """
+        manifest = self.load_marketplace_manifest(repo_path)
+        if not manifest:
+            return []
+
+        items: list[DiscoveredItem] = []
+        for plugin in manifest.plugins:
+            for skill_path_str in plugin.skills:
+                skill_path = repo_path / skill_path_str.lstrip("./")
+                if skill_path.is_dir():
+                    item = self._parse_skill_dir(skill_path, plugin_name=plugin.name)
+                    if item:
+                        items.append(item)
+
+        return items
+
     def discover_all(self, repo_path: Path) -> list[DiscoveredItem]:
         """Discover all items in a repository.
 
-        Auto-discovers:
+        For marketplace-enabled repos, uses the marketplace manifest.
+        Otherwise, auto-discovers:
         - Agents: *.agent.md files, or *.md files with frontmatter containing 'name'
         - Skills: Directories containing SKILL.md
         - Commands: *.md files in .claude/commands/ directories with frontmatter
@@ -51,6 +111,10 @@ class Discovery:
         Returns:
             List of discovered items.
         """
+        # Check if this is a marketplace repo first
+        if self.is_marketplace_repo(repo_path):
+            return self.discover_from_marketplace(repo_path)
+
         items: list[DiscoveredItem] = []
 
         # Auto-discover agents
@@ -235,11 +299,14 @@ class Discovery:
         except Exception:
             return None
 
-    def _parse_skill_dir(self, path: Path) -> DiscoveredItem | None:
+    def _parse_skill_dir(
+        self, path: Path, plugin_name: str | None = None
+    ) -> DiscoveredItem | None:
         """Parse a skill directory.
 
         Args:
             path: Path to the skill directory.
+            plugin_name: Optional plugin name from marketplace manifest.
 
         Returns:
             DiscoveredItem or None if parsing fails.
@@ -248,6 +315,10 @@ class Discovery:
         try:
             content = skill_file.read_text()
             frontmatter = self._parse_frontmatter(content)
+
+            # Add plugin name to frontmatter if from marketplace
+            if plugin_name:
+                frontmatter["plugin"] = plugin_name
 
             name = frontmatter.get("name", path.name)
             description = frontmatter.get("description", "")

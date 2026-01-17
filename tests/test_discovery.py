@@ -223,3 +223,161 @@ class TestDiscoveredItem:
         assert item.description == ""
         assert item.platforms == []
         assert item.frontmatter == {}
+
+
+@pytest.fixture
+def marketplace_repo(tmp_path: Path) -> Path:
+    """Create a marketplace-enabled repository structure."""
+    # Create .claude-plugin directory with marketplace.json
+    plugin_dir = tmp_path / ".claude-plugin"
+    plugin_dir.mkdir(parents=True)
+    (plugin_dir / "marketplace.json").write_text(
+        """{
+  "name": "test-marketplace",
+  "owner": {
+    "name": "Test Author",
+    "email": "test@example.com"
+  },
+  "metadata": {
+    "description": "Test marketplace",
+    "version": "1.0.0"
+  },
+  "plugins": [
+    {
+      "name": "document-skills",
+      "description": "Document processing skills",
+      "source": "./",
+      "strict": false,
+      "skills": [
+        "./skills/pdf",
+        "./skills/docx"
+      ]
+    }
+  ]
+}"""
+    )
+
+    # Create skills directories
+    pdf_skill = tmp_path / "skills" / "pdf"
+    pdf_skill.mkdir(parents=True)
+    (pdf_skill / "SKILL.md").write_text(
+        """---
+name: pdf
+description: PDF processing toolkit
+license: MIT
+---
+
+# PDF Skill
+
+Process PDF files.
+"""
+    )
+
+    docx_skill = tmp_path / "skills" / "docx"
+    docx_skill.mkdir(parents=True)
+    (docx_skill / "SKILL.md").write_text(
+        """---
+name: docx
+description: Word document processing
+---
+
+# DOCX Skill
+
+Process Word documents.
+"""
+    )
+
+    return tmp_path
+
+
+class TestMarketplaceDiscovery:
+    """Tests for marketplace discovery functionality."""
+
+    def test_is_marketplace_repo_true(self, discovery: Discovery, marketplace_repo: Path) -> None:
+        """Test detecting a marketplace-enabled repository."""
+        assert discovery.is_marketplace_repo(marketplace_repo) is True
+
+    def test_is_marketplace_repo_false(self, discovery: Discovery, sample_repo: Path) -> None:
+        """Test detecting a non-marketplace repository."""
+        assert discovery.is_marketplace_repo(sample_repo) is False
+
+    def test_load_marketplace_manifest(self, discovery: Discovery, marketplace_repo: Path) -> None:
+        """Test loading marketplace manifest."""
+        manifest = discovery.load_marketplace_manifest(marketplace_repo)
+        assert manifest is not None
+        assert manifest.name == "test-marketplace"
+        assert manifest.owner is not None
+        assert manifest.owner.name == "Test Author"
+        assert len(manifest.plugins) == 1
+        assert manifest.plugins[0].name == "document-skills"
+
+    def test_load_marketplace_manifest_not_found(
+        self, discovery: Discovery, sample_repo: Path
+    ) -> None:
+        """Test loading manifest from non-marketplace repo."""
+        manifest = discovery.load_marketplace_manifest(sample_repo)
+        assert manifest is None
+
+    def test_load_marketplace_manifest_invalid_json(
+        self, discovery: Discovery, tmp_path: Path
+    ) -> None:
+        """Test loading invalid JSON manifest."""
+        plugin_dir = tmp_path / ".claude-plugin"
+        plugin_dir.mkdir(parents=True)
+        (plugin_dir / "marketplace.json").write_text("{ invalid json }")
+
+        manifest = discovery.load_marketplace_manifest(tmp_path)
+        assert manifest is None
+
+    def test_discover_from_marketplace(
+        self, discovery: Discovery, marketplace_repo: Path
+    ) -> None:
+        """Test discovering skills from marketplace manifest."""
+        items = discovery.discover_from_marketplace(marketplace_repo)
+
+        assert len(items) == 2
+        names = [i.name for i in items]
+        assert "pdf" in names
+        assert "docx" in names
+
+        # Check plugin name is in frontmatter
+        pdf_item = next(i for i in items if i.name == "pdf")
+        assert pdf_item.frontmatter.get("plugin") == "document-skills"
+
+    def test_discover_from_marketplace_empty(
+        self, discovery: Discovery, sample_repo: Path
+    ) -> None:
+        """Test discover_from_marketplace returns empty for non-marketplace repo."""
+        items = discovery.discover_from_marketplace(sample_repo)
+        assert items == []
+
+    def test_discover_all_marketplace(
+        self, discovery: Discovery, marketplace_repo: Path
+    ) -> None:
+        """Test discover_all uses marketplace discovery when available."""
+        items = discovery.discover_all(marketplace_repo)
+
+        # Should only find skills from marketplace (not auto-discover)
+        assert len(items) == 2
+        assert all(i.item_type == "skill" for i in items)
+
+    def test_discover_from_marketplace_missing_skill_dir(
+        self, discovery: Discovery, tmp_path: Path
+    ) -> None:
+        """Test marketplace discovery handles missing skill directories."""
+        plugin_dir = tmp_path / ".claude-plugin"
+        plugin_dir.mkdir(parents=True)
+        (plugin_dir / "marketplace.json").write_text(
+            """{
+  "name": "test",
+  "plugins": [
+    {
+      "name": "missing",
+      "skills": ["./skills/nonexistent"]
+    }
+  ]
+}"""
+        )
+
+        items = discovery.discover_from_marketplace(tmp_path)
+        assert items == []
