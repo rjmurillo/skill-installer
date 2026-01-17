@@ -84,8 +84,9 @@ class ClaudePlatform(BasePlatform):
             return self.commands_dir / f"{name}{self.agent_extension}"
         raise ValueError(f"Unknown item type: {item_type}")
 
-    # validate_agent inherited from BasePlatform
-    # get_required_fields returns ["name:"] by default, which is correct for Claude
+    def get_required_fields(self) -> list[str]:
+        """Claude Code requires 'name' field in frontmatter."""
+        return ["name:"]
 
     def is_available(self) -> bool:
         """Check if Claude Code is available on this system.

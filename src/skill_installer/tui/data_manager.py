@@ -168,7 +168,7 @@ class DataManager:
 
         items = self.discovery.discover_all(repo_path, None)
         for item in items:
-            item_id = f"{source.name}/{item.item_type}/{item.name}"
+            item_id = item.make_item_id(source.name)
             platforms_installed = installed_map.get(item_id, [])
             display_item = DisplayItem(
                 name=item.name,
@@ -179,6 +179,7 @@ class DataManager:
                 installed_platforms=platforms_installed,
                 raw_data=item,
                 source_url=source.url,
+                relative_path=item.relative_path,
             )
             discovered.append(display_item)
             if platforms_installed:

@@ -81,8 +81,8 @@ class VSCodePlatform(BasePlatform):
         raise ValueError(f"Unknown item type: {item_type}")
 
     def get_required_fields(self) -> list[str]:
-        """VS Code requires 'tools' field in frontmatter."""
-        return ["tools:"]
+        """VS Code agents have no required frontmatter fields per spec."""
+        return []
 
     def get_field_error_message(self, field: str) -> str:
         """Provide VS Code-specific error message."""

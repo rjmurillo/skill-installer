@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from skill_installer.tui.models import DisplayItem, DisplaySource
@@ -185,3 +186,46 @@ class ItemOperations:
                 self.notify(f"Source not found: {source.name}", "error")
         else:
             self.notify("Registry not configured", "warning")
+
+    def update_item(self, item: DisplayItem) -> None:
+        """Update an installed item by reinstalling it.
+
+        Args:
+            item: The item to update.
+        """
+        if not self.installer:
+            self.notify("Installer not configured", "error")
+            return
+
+        if not item.installed_platforms:
+            self.notify(f"Item {item.name} is not installed", "warning")
+            return
+
+        # First, update the source to get latest changes
+        if self.gitops and self.registry_manager:
+            source = self.registry_manager.get_source(item.source_name)
+            if source:
+                try:
+                    self.gitops.clone_or_fetch(source.url, source.name)
+                    self.registry_manager.update_source_sync_time(source.name)
+                except Exception as e:
+                    self.notify(f"Failed to fetch updates: {e}", "error")
+                    return
+
+        # Reinstall to each platform where it's currently installed
+        success_count = 0
+        for platform in item.installed_platforms:
+            result = self.installer.install_item(
+                item.raw_data, item.source_name, platform
+            )
+            if result.success:
+                success_count += 1
+            else:
+                self.notify(f"Failed to update on {platform}: {result.error}", "error")
+
+        if success_count > 0:
+            self.notify(f"Updated {item.name}")
+            if self._load_data:
+                self._load_data()
+        else:
+            self.notify(f"Failed to update {item.name}", "error")

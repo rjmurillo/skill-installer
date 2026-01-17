@@ -67,74 +67,70 @@ class BaseTransformStrategy(ABC):
 
 
 class ClaudeToVSCodeStrategy(BaseTransformStrategy):
-    """Transform Claude format to VS Code format."""
+    """Transform Claude format to VS Code format.
+
+    Note:
+        This transform is disabled. Claude Code and VSCode/Copilot use
+        incompatible frontmatter formats. See ROADMAP.md for future plans.
+
+    References:
+        - Claude Code: https://docs.anthropic.com/en/docs/agents-and-tools/claude-code/agents
+        - VSCode: https://code.visualstudio.com/docs/copilot/customization/custom-agents
+    """
 
     source_platform = "claude"
     target_platform = "vscode"
 
     def transform_frontmatter(self, frontmatter: dict) -> dict:
-        """Transform frontmatter for VS Code."""
-        result = dict(frontmatter)
-
-        # Add tools if not present
-        if "tools" not in result:
-            result["tools"] = self.DEFAULT_VSCODE_TOOLS
-
-        # Transform model name to full
-        if "model" in result:
-            result["model"] = self._map_model_to_full(result["model"])
-
-        return result
+        """Blocked: incompatible frontmatter formats."""
+        raise NotImplementedError(
+            "Claude to VSCode transform is disabled. "
+            "Claude requires 'name' and 'description' fields "
+            "(https://docs.anthropic.com/en/docs/agents-and-tools/claude-code/agents). "
+            "VSCode uses filename-based naming "
+            "(https://code.visualstudio.com/docs/copilot/customization/custom-agents). "
+            "See ROADMAP.md."
+        )
 
     def transform_syntax(self, body: str) -> str:
-        """Transform Claude syntax to VS Code syntax."""
-        pattern = r'Task\s*\(\s*subagent_type\s*=\s*["\'](\w+)["\']\s*(?:,\s*prompt\s*=\s*["\']([^"\']+)["\'])?\s*\)'
-
-        def replacer(match: re.Match) -> str:
-            agent_type = match.group(1)
-            prompt = match.group(2)
-            if prompt:
-                return f'#runSubagent("{agent_type}", "{prompt}")'
-            return f'#runSubagent("{agent_type}")'
-
-        return re.sub(pattern, replacer, body)
+        """Blocked: incompatible frontmatter formats."""
+        raise NotImplementedError(
+            "Claude to VSCode transform is disabled. See ROADMAP.md."
+        )
 
 
 class VSCodeToClaudeStrategy(BaseTransformStrategy):
-    """Transform VS Code format to Claude format."""
+    """Transform VS Code format to Claude format.
+
+    Note:
+        This transform is disabled. Claude Code and VSCode/Copilot use
+        incompatible frontmatter formats. See ROADMAP.md for future plans.
+
+    References:
+        - Claude Code: https://docs.anthropic.com/en/docs/agents-and-tools/claude-code/agents
+        - VSCode: https://code.visualstudio.com/docs/copilot/customization/custom-agents
+        - Copilot: https://docs.github.com/en/copilot/reference/custom-agents-configuration
+    """
 
     source_platform = "vscode"
     target_platform = "claude"
 
     def transform_frontmatter(self, frontmatter: dict) -> dict:
-        """Transform frontmatter for Claude."""
-        result = dict(frontmatter)
-
-        # Remove tools (not used by Claude)
-        result.pop("tools", None)
-
-        # Ensure name is present
-        if "name" not in result:
-            result["name"] = "agent"
-
-        # Transform model name to short
-        if "model" in result:
-            result["model"] = self._map_model_to_short(result["model"])
-
-        return result
+        """Blocked: incompatible frontmatter formats."""
+        raise NotImplementedError(
+            "VSCode to Claude transform is disabled. "
+            "Claude requires 'name' and 'description' fields "
+            "(https://docs.anthropic.com/en/docs/agents-and-tools/claude-code/agents). "
+            "VSCode/Copilot agents may lack these "
+            "(https://docs.github.com/en/copilot/reference/custom-agents-configuration). "
+            "See ROADMAP.md."
+        )
 
     def transform_syntax(self, body: str) -> str:
-        """Transform VS Code syntax to Claude syntax."""
-        pattern = r'#runSubagent\s*\(\s*["\'](\w+)["\']\s*(?:,\s*["\']([^"\']+)["\'])?\s*\)'
-
-        def replacer(match: re.Match) -> str:
-            agent_type = match.group(1)
-            prompt = match.group(2)
-            if prompt:
-                return f'Task(subagent_type="{agent_type}", prompt="{prompt}")'
-            return f'Task(subagent_type="{agent_type}")'
-
-        return re.sub(pattern, replacer, body)
+        """Blocked: incompatible frontmatter formats."""
+        raise NotImplementedError(
+            "VSCode to Claude transform is disabled. See ROADMAP.md."
+        )
 
 
 class IdentityStrategy(BaseTransformStrategy):
@@ -187,19 +183,8 @@ class TransformEngine:
 
     def _register_default_strategies(self) -> None:
         """Register built-in transformation strategies."""
-        # Claude to VS Code family
-        claude_to_vscode = ClaudeToVSCodeStrategy()
-        self._strategies[("claude", "vscode")] = claude_to_vscode
-        self._strategies[("claude", "vscode-insiders")] = claude_to_vscode
-        self._strategies[("claude", "copilot")] = claude_to_vscode
-
-        # VS Code family to Claude
-        vscode_to_claude = VSCodeToClaudeStrategy()
-        self._strategies[("vscode", "claude")] = vscode_to_claude
-        self._strategies[("vscode-insiders", "claude")] = vscode_to_claude
-        self._strategies[("copilot", "claude")] = vscode_to_claude
-
         # Identity transformations (same format family)
+        # VSCode, VSCode Insiders, and Copilot share the same format
         vscode_identity = IdentityStrategy("vscode")
         self._strategies[("vscode", "copilot")] = vscode_identity
         self._strategies[("vscode", "vscode-insiders")] = vscode_identity
@@ -207,6 +192,11 @@ class TransformEngine:
         self._strategies[("vscode-insiders", "copilot")] = vscode_identity
         self._strategies[("copilot", "vscode")] = vscode_identity
         self._strategies[("copilot", "vscode-insiders")] = vscode_identity
+
+        # NOTE: Claude <-> VSCode/Copilot transforms are intentionally not
+        # registered. The frontmatter formats are incompatible. Cross-platform
+        # installation is blocked in install.py. Future work may add transform
+        # support. See ROADMAP.md.
 
     def register_strategy(self, strategy: BaseTransformStrategy) -> None:
         """Register a custom transformation strategy.
@@ -260,50 +250,62 @@ class TransformEngine:
     def claude_to_vscode(self, content: str) -> str:
         """Convert Claude agent format to VS Code format.
 
-        Args:
-            content: Claude agent content.
+        Note:
+            Cross-platform transforms are not currently supported.
+            See ROADMAP.md for future plans.
 
-        Returns:
-            VS Code formatted content.
+        Raises:
+            NotImplementedError: Always raised. Cross-platform transforms disabled.
         """
-        strategy = self._strategies[("claude", "vscode")]
-        return self._apply_strategy(content, strategy)
+        raise NotImplementedError(
+            "Claude to VSCode transforms not supported. "
+            "Formats are incompatible. See ROADMAP.md."
+        )
 
     def vscode_to_claude(self, content: str) -> str:
         """Convert VS Code agent format to Claude format.
 
-        Args:
-            content: VS Code agent content.
+        Note:
+            Cross-platform transforms are not currently supported.
+            See ROADMAP.md for future plans.
 
-        Returns:
-            Claude formatted content.
+        Raises:
+            NotImplementedError: Always raised. Cross-platform transforms disabled.
         """
-        strategy = self._strategies[("vscode", "claude")]
-        return self._apply_strategy(content, strategy)
+        raise NotImplementedError(
+            "VSCode to Claude transforms not supported. "
+            "Formats are incompatible. See ROADMAP.md."
+        )
 
     def copilot_to_claude(self, content: str) -> str:
         """Convert Copilot CLI format to Claude format.
 
-        Args:
-            content: Copilot agent content.
+        Note:
+            Cross-platform transforms are not currently supported.
+            See ROADMAP.md for future plans.
 
-        Returns:
-            Claude formatted content.
+        Raises:
+            NotImplementedError: Always raised. Cross-platform transforms disabled.
         """
-        strategy = self._strategies[("copilot", "claude")]
-        return self._apply_strategy(content, strategy)
+        raise NotImplementedError(
+            "Copilot to Claude transforms not supported. "
+            "Formats are incompatible. See ROADMAP.md."
+        )
 
     def claude_to_copilot(self, content: str) -> str:
         """Convert Claude format to Copilot CLI format.
 
-        Args:
-            content: Claude agent content.
+        Note:
+            Cross-platform transforms are not currently supported.
+            See ROADMAP.md for future plans.
 
-        Returns:
-            Copilot formatted content.
+        Raises:
+            NotImplementedError: Always raised. Cross-platform transforms disabled.
         """
-        strategy = self._strategies[("claude", "copilot")]
-        return self._apply_strategy(content, strategy)
+        raise NotImplementedError(
+            "Claude to Copilot transforms not supported. "
+            "Formats are incompatible. See ROADMAP.md."
+        )
 
     def transform(self, content: str, source_platform: str, target_platform: str) -> str:
         """Transform content between platforms.
@@ -382,58 +384,54 @@ class TransformEngine:
     def _transform_frontmatter_to_vscode(self, frontmatter: dict) -> dict:
         """Transform frontmatter for VS Code.
 
-        Delegates to ClaudeToVSCodeStrategy for consistency.
+        Note:
+            Cross-platform transforms are disabled. See ROADMAP.md.
 
-        Args:
-            frontmatter: Claude frontmatter.
-
-        Returns:
-            VS Code frontmatter.
+        Raises:
+            NotImplementedError: Always raised.
         """
-        strategy = self._strategies[("claude", "vscode")]
-        return strategy.transform_frontmatter(frontmatter)
+        raise NotImplementedError(
+            "Claude to VSCode frontmatter transform is disabled. See ROADMAP.md."
+        )
 
     def _transform_frontmatter_to_claude(self, frontmatter: dict) -> dict:
         """Transform frontmatter for Claude.
 
-        Delegates to VSCodeToClaudeStrategy for consistency.
+        Note:
+            Cross-platform transforms are disabled. See ROADMAP.md.
 
-        Args:
-            frontmatter: VS Code/Copilot frontmatter.
-
-        Returns:
-            Claude frontmatter.
+        Raises:
+            NotImplementedError: Always raised.
         """
-        strategy = self._strategies[("vscode", "claude")]
-        return strategy.transform_frontmatter(frontmatter)
+        raise NotImplementedError(
+            "VSCode to Claude frontmatter transform is disabled. See ROADMAP.md."
+        )
 
     def _transform_syntax_to_vscode(self, body: str) -> str:
         """Transform body syntax for VS Code.
 
-        Delegates to ClaudeToVSCodeStrategy for consistency.
+        Note:
+            Cross-platform transforms are disabled. See ROADMAP.md.
 
-        Args:
-            body: Claude agent body.
-
-        Returns:
-            VS Code formatted body.
+        Raises:
+            NotImplementedError: Always raised.
         """
-        strategy = self._strategies[("claude", "vscode")]
-        return strategy.transform_syntax(body)
+        raise NotImplementedError(
+            "Claude to VSCode syntax transform is disabled. See ROADMAP.md."
+        )
 
     def _transform_syntax_to_claude(self, body: str) -> str:
         """Transform body syntax for Claude.
 
-        Delegates to VSCodeToClaudeStrategy for consistency.
+        Note:
+            Cross-platform transforms are disabled. See ROADMAP.md.
 
-        Args:
-            body: VS Code/Copilot agent body.
-
-        Returns:
-            Claude formatted body.
+        Raises:
+            NotImplementedError: Always raised.
         """
-        strategy = self._strategies[("vscode", "claude")]
-        return strategy.transform_syntax(body)
+        raise NotImplementedError(
+            "VSCode to Claude syntax transform is disabled. See ROADMAP.md."
+        )
 
     def detect_platform(self, content: str) -> str | None:
         """Detect the platform format of content.

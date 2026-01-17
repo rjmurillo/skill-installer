@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 from textual.app import App, ComposeResult
 from textual.containers import Container
 
+from skill_installer.discovery import DiscoveredItem
 from skill_installer.tui import (
     ConfirmationScreen,
     DisplayItem,
@@ -158,16 +160,34 @@ class _LocationSelectionTestApp(App):
         )
 
 
-def _make_test_display_item() -> DisplayItem:
+def _make_test_display_item(
+    name: str = "Test Item",
+    item_type: str = "skill",
+    description: str = "A test item",
+    source_name: str = "test-source",
+    platforms: list[str] | None = None,
+    installed_platforms: list[str] | None = None,
+) -> DisplayItem:
     """Create a DisplayItem for testing."""
+    if platforms is None:
+        platforms = ["claude", "vscode"]
+    if installed_platforms is None:
+        installed_platforms = []
+    discovered = DiscoveredItem(
+        name=name,
+        item_type=item_type,
+        path=Path("/test/path"),
+        description=description,
+        platforms=platforms,
+    )
     return DisplayItem(
-        name="Test Item",
-        item_type="skill",
-        description="A test item",
-        source_name="test-source",
-        platforms=["claude", "vscode"],
-        installed_platforms=[],
-        raw_data={},
+        name=name,
+        item_type=item_type,
+        description=description,
+        source_name=source_name,
+        platforms=platforms,
+        installed_platforms=installed_platforms,
+        raw_data=discovered,
     )
 
 
@@ -1072,14 +1092,10 @@ class TestItemListView:
         async with app.run_test():
             items = [
                 _make_test_display_item(),
-                DisplayItem(
+                _make_test_display_item(
                     name="Item 2",
-                    item_type="skill",
                     description="Second item",
-                    source_name="test-source",
                     platforms=["claude"],
-                    installed_platforms=[],
-                    raw_data={},
                 ),
             ]
             app.item_list.set_items(items)
@@ -1151,14 +1167,10 @@ class TestItemListView:
         async with app.run_test():
             items = [
                 _make_test_display_item(),
-                DisplayItem(
+                _make_test_display_item(
                     name="Item 2",
-                    item_type="skill",
                     description="Second item",
-                    source_name="test-source",
                     platforms=["claude"],
-                    installed_platforms=[],
-                    raw_data={},
                 ),
             ]
             app.item_list.set_items(items)
@@ -1207,14 +1219,11 @@ class TestItemRow:
     @pytest.mark.asyncio
     async def test_compose_installed(self) -> None:
         """Test ItemRow compose for installed item."""
-        item = DisplayItem(
+        item = _make_test_display_item(
             name="Installed Item",
             item_type="agent",
             description="An installed item",
-            source_name="test-source",
-            platforms=["claude", "vscode"],
             installed_platforms=["claude"],
-            raw_data={},
         )
         app = _ItemRowTestApp(item)
         async with app.run_test():
@@ -1452,14 +1461,12 @@ class TestItemDetailScreen:
     @pytest.mark.asyncio
     async def test_shows_installed_item_options(self) -> None:
         """Test installed items show uninstall option."""
-        item = DisplayItem(
+        item = _make_test_display_item(
             name="Installed Item",
             item_type="agent",
             description="An installed item",
-            source_name="test-source",
             platforms=["claude"],
             installed_platforms=["claude"],
-            raw_data={},
         )
         app = _ItemDetailTestApp(item)
         async with app.run_test() as pilot:
@@ -2087,3 +2094,638 @@ class TestItemOperations:
         ops.remove_source(_make_test_display_source())
 
         assert any("not found" in msg for msg, _ in notifications)
+
+
+# ============================================================================
+# Tests for InstalledItemDetailScreen
+# ============================================================================
+
+
+class _InstalledItemDetailTestApp(App):
+    """Test app for InstalledItemDetailScreen tests."""
+
+    def __init__(self, item: DisplayItem, registry_manager=None) -> None:
+        super().__init__()
+        self.test_item = item
+        self.registry_manager = registry_manager
+        self.result: tuple[str, DisplayItem] | None = None
+
+    def compose(self) -> ComposeResult:
+        yield Container()
+
+    async def on_mount(self) -> None:
+        from skill_installer.tui.screens.installed_item_detail import (
+            InstalledItemDetailScreen,
+        )
+
+        await self.push_screen(
+            InstalledItemDetailScreen(
+                self.test_item, registry_manager=self.registry_manager
+            ),
+            self._handle_result,
+        )
+
+    def _handle_result(self, result: tuple[str, DisplayItem] | None) -> None:
+        self.result = result
+
+
+class TestInstalledItemDetailScreen:
+    """Tests for InstalledItemDetailScreen modal."""
+
+    @pytest.mark.asyncio
+    async def test_escape_dismisses(self) -> None:
+        """Test escape key dismisses the screen."""
+        item = _make_test_display_item(installed_platforms=["claude"])
+        app = _InstalledItemDetailTestApp(item)
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            await pilot.pause()
+
+            from skill_installer.tui.screens.installed_item_detail import (
+                InstalledItemDetailScreen,
+            )
+
+            assert isinstance(app.screen, InstalledItemDetailScreen)
+
+            await pilot.press("escape")
+            await pilot.pause()
+
+            assert not isinstance(app.screen, InstalledItemDetailScreen)
+            assert app.result is None
+
+    @pytest.mark.asyncio
+    async def test_navigation_with_arrows(self) -> None:
+        """Test arrow keys navigate between options."""
+        item = _make_test_display_item(installed_platforms=["claude"])
+        app = _InstalledItemDetailTestApp(item)
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            await pilot.pause()
+
+            from skill_installer.tui.screens.installed_item_detail import (
+                InstalledItemDetailScreen,
+            )
+
+            screen = app.screen
+            assert isinstance(screen, InstalledItemDetailScreen)
+            assert screen.selected_index == 0
+
+            await pilot.press("down")
+            await pilot.pause()
+            assert screen.selected_index == 1
+
+            await pilot.press("down")
+            await pilot.pause()
+            assert screen.selected_index == 2
+
+            await pilot.press("up")
+            await pilot.pause()
+            assert screen.selected_index == 1
+
+    @pytest.mark.asyncio
+    async def test_navigation_with_j_k(self) -> None:
+        """Test j/k keys navigate between options."""
+        item = _make_test_display_item(installed_platforms=["claude"])
+        app = _InstalledItemDetailTestApp(item)
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            await pilot.pause()
+
+            from skill_installer.tui.screens.installed_item_detail import (
+                InstalledItemDetailScreen,
+            )
+
+            screen = app.screen
+            assert isinstance(screen, InstalledItemDetailScreen)
+            assert screen.selected_index == 0
+
+            await pilot.press("j")
+            await pilot.pause()
+            assert screen.selected_index == 1
+
+            await pilot.press("k")
+            await pilot.pause()
+            assert screen.selected_index == 0
+
+    @pytest.mark.asyncio
+    async def test_navigation_bounds(self) -> None:
+        """Test navigation does not go out of bounds."""
+        item = _make_test_display_item(installed_platforms=["claude"])
+        app = _InstalledItemDetailTestApp(item)
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            await pilot.pause()
+
+            from skill_installer.tui.screens.installed_item_detail import (
+                InstalledItemDetailScreen,
+            )
+
+            screen = app.screen
+            assert isinstance(screen, InstalledItemDetailScreen)
+
+            # Try to go above first option
+            await pilot.press("up")
+            await pilot.pause()
+            assert screen.selected_index == 0
+
+            # Navigate to last option
+            await pilot.press("down")
+            await pilot.press("down")
+            await pilot.press("down")
+            await pilot.pause()
+            # Should stop at last option (index 2)
+            assert screen.selected_index == 2
+
+    @pytest.mark.asyncio
+    async def test_select_update_option(self) -> None:
+        """Test selecting update option returns correct result."""
+        item = _make_test_display_item(installed_platforms=["claude"])
+        app = _InstalledItemDetailTestApp(item)
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            await pilot.pause()
+
+            # Update is first option, press enter
+            await pilot.press("enter")
+            await pilot.pause()
+
+            assert app.result is not None
+            assert app.result[0] == "update"
+            assert app.result[1].name == item.name
+
+    @pytest.mark.asyncio
+    async def test_select_uninstall_option(self) -> None:
+        """Test selecting uninstall option returns correct result."""
+        item = _make_test_display_item(installed_platforms=["claude"])
+        app = _InstalledItemDetailTestApp(item)
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            await pilot.pause()
+
+            # Navigate to uninstall (second option)
+            await pilot.press("down")
+            await pilot.pause()
+            await pilot.press("enter")
+            await pilot.pause()
+
+            assert app.result is not None
+            assert app.result[0] == "uninstall"
+
+    @pytest.mark.asyncio
+    async def test_select_back_option(self) -> None:
+        """Test selecting back option dismisses without result."""
+        item = _make_test_display_item(installed_platforms=["claude"])
+        app = _InstalledItemDetailTestApp(item)
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            await pilot.pause()
+
+            # Navigate to back (third option)
+            await pilot.press("down")
+            await pilot.press("down")
+            await pilot.pause()
+            await pilot.press("enter")
+            await pilot.pause()
+
+            assert app.result is None
+
+    @pytest.mark.asyncio
+    async def test_displays_item_info(self) -> None:
+        """Test screen displays item information."""
+        item = _make_test_display_item(
+            name="test-skill",
+            description="A test skill for testing",
+            source_name="test-marketplace",
+            installed_platforms=["claude", "vscode"],
+        )
+        app = _InstalledItemDetailTestApp(item)
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            await pilot.pause()
+
+            from skill_installer.tui.screens.installed_item_detail import (
+                InstalledItemDetailScreen,
+            )
+
+            screen = app.screen
+            assert isinstance(screen, InstalledItemDetailScreen)
+
+            # Verify the screen has correct item
+            assert screen.item.name == "test-skill"
+            assert screen.item.source_name == "test-marketplace"
+
+    @pytest.mark.asyncio
+    async def test_scope_text_without_registry(self) -> None:
+        """Test scope text defaults to user without registry."""
+        item = _make_test_display_item(installed_platforms=["claude"])
+        app = _InstalledItemDetailTestApp(item, registry_manager=None)
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            await pilot.pause()
+
+            from skill_installer.tui.screens.installed_item_detail import (
+                InstalledItemDetailScreen,
+            )
+
+            screen = app.screen
+            assert isinstance(screen, InstalledItemDetailScreen)
+            assert screen._get_scope_text() == "user"
+
+    @pytest.mark.asyncio
+    async def test_scope_text_with_user_scope(self) -> None:
+        """Test scope text shows user scope."""
+        from unittest.mock import MagicMock
+
+        item = _make_test_display_item(installed_platforms=["claude"])
+
+        mock_installed = MagicMock()
+        mock_installed.id = item.unique_id
+        mock_installed.scope = "user"
+
+        mock_registry = MagicMock()
+        mock_registry.list_installed.return_value = [mock_installed]
+
+        app = _InstalledItemDetailTestApp(item, registry_manager=mock_registry)
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            await pilot.pause()
+
+            from skill_installer.tui.screens.installed_item_detail import (
+                InstalledItemDetailScreen,
+            )
+
+            screen = app.screen
+            assert isinstance(screen, InstalledItemDetailScreen)
+            assert screen._get_scope_text() == "user"
+
+    @pytest.mark.asyncio
+    async def test_scope_text_with_project_scope(self) -> None:
+        """Test scope text shows project scope."""
+        from unittest.mock import MagicMock
+
+        item = _make_test_display_item(installed_platforms=["claude"])
+
+        mock_installed = MagicMock()
+        mock_installed.id = item.unique_id
+        mock_installed.scope = "project"
+
+        mock_registry = MagicMock()
+        mock_registry.list_installed.return_value = [mock_installed]
+
+        app = _InstalledItemDetailTestApp(item, registry_manager=mock_registry)
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            await pilot.pause()
+
+            from skill_installer.tui.screens.installed_item_detail import (
+                InstalledItemDetailScreen,
+            )
+
+            screen = app.screen
+            assert isinstance(screen, InstalledItemDetailScreen)
+            assert screen._get_scope_text() == "project"
+
+    @pytest.mark.asyncio
+    async def test_scope_text_with_both_scopes(self) -> None:
+        """Test scope text shows both scopes."""
+        from unittest.mock import MagicMock
+
+        item = _make_test_display_item(installed_platforms=["claude", "vscode"])
+
+        mock_installed_user = MagicMock()
+        mock_installed_user.id = item.unique_id
+        mock_installed_user.scope = "user"
+
+        mock_installed_project = MagicMock()
+        mock_installed_project.id = item.unique_id
+        mock_installed_project.scope = "project"
+
+        mock_registry = MagicMock()
+        mock_registry.list_installed.return_value = [
+            mock_installed_user,
+            mock_installed_project,
+        ]
+
+        app = _InstalledItemDetailTestApp(item, registry_manager=mock_registry)
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            await pilot.pause()
+
+            from skill_installer.tui.screens.installed_item_detail import (
+                InstalledItemDetailScreen,
+            )
+
+            screen = app.screen
+            assert isinstance(screen, InstalledItemDetailScreen)
+            assert screen._get_scope_text() == "user, project"
+
+    @pytest.mark.asyncio
+    async def test_components_text(self) -> None:
+        """Test components text shows item type."""
+        item = _make_test_display_item(
+            name="my-agent",
+            item_type="agent",
+            installed_platforms=["claude"],
+        )
+        app = _InstalledItemDetailTestApp(item)
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            await pilot.pause()
+
+            from skill_installer.tui.screens.installed_item_detail import (
+                InstalledItemDetailScreen,
+            )
+
+            screen = app.screen
+            assert isinstance(screen, InstalledItemDetailScreen)
+            components_text = screen._get_components_text()
+            assert "Agent" in components_text
+            assert "my-agent" in components_text
+
+
+# ============================================================================
+# Tests for handle_installed_item_detail_result handler
+# ============================================================================
+
+
+class TestHandleInstalledItemDetailResult:
+    """Tests for handle_installed_item_detail_result handler."""
+
+    def test_handle_none_result(self) -> None:
+        """Test handler does nothing with None result."""
+        from skill_installer.tui.handlers import ScreenHandlers
+
+        update_calls = []
+        uninstall_calls = []
+
+        handlers = ScreenHandlers(
+            update_item=lambda item: update_calls.append(item),
+            uninstall_item=lambda item: uninstall_calls.append(item),
+        )
+        handlers.handle_installed_item_detail_result(None)
+
+        assert len(update_calls) == 0
+        assert len(uninstall_calls) == 0
+
+    def test_handle_update_option(self) -> None:
+        """Test handler calls update_item for update option."""
+        from skill_installer.tui.handlers import ScreenHandlers
+
+        update_calls = []
+
+        handlers = ScreenHandlers(
+            update_item=lambda item: update_calls.append(item),
+        )
+
+        item = _make_test_display_item(installed_platforms=["claude"])
+        handlers.handle_installed_item_detail_result(("update", item))
+
+        assert len(update_calls) == 1
+        assert update_calls[0].name == item.name
+
+    def test_handle_uninstall_option(self) -> None:
+        """Test handler initiates uninstall for uninstall option."""
+        from skill_installer.tui.handlers import ScreenHandlers
+
+        push_screen_calls = []
+
+        def mock_push_screen(screen, callback=None):
+            push_screen_calls.append((screen, callback))
+
+        handlers = ScreenHandlers(push_screen=mock_push_screen)
+
+        item = _make_test_display_item(installed_platforms=["claude"])
+        handlers.handle_installed_item_detail_result(("uninstall", item))
+
+        # Should push confirmation screen
+        assert len(push_screen_calls) == 1
+        assert handlers._pending_uninstall_item == item
+
+    def test_handle_update_without_callback(self) -> None:
+        """Test handler does nothing if update_item callback is None."""
+        from skill_installer.tui.handlers import ScreenHandlers
+
+        handlers = ScreenHandlers()
+
+        item = _make_test_display_item(installed_platforms=["claude"])
+        # Should not raise
+        handlers.handle_installed_item_detail_result(("update", item))
+
+
+# ============================================================================
+# Tests for update_item operation
+# ============================================================================
+
+
+class TestUpdateItemOperation:
+    """Tests for update_item operation."""
+
+    def test_update_item_no_installer(self) -> None:
+        """Test update_item with no installer shows error."""
+        from skill_installer.tui.operations import ItemOperations
+
+        notifications = []
+
+        def mock_notify(msg: str, severity: str) -> None:
+            notifications.append((msg, severity))
+
+        ops = ItemOperations(notify=mock_notify)
+        ops.update_item(_make_test_display_item(installed_platforms=["claude"]))
+
+        assert ("Installer not configured", "error") in notifications
+
+    def test_update_item_not_installed(self) -> None:
+        """Test update_item with not installed item shows warning."""
+        from unittest.mock import MagicMock
+
+        from skill_installer.tui.operations import ItemOperations
+
+        notifications = []
+
+        def mock_notify(msg: str, severity: str) -> None:
+            notifications.append((msg, severity))
+
+        ops = ItemOperations(
+            installer=MagicMock(),
+            notify=mock_notify,
+        )
+        # Item without installed_platforms
+        ops.update_item(_make_test_display_item(installed_platforms=[]))
+
+        assert any("not installed" in msg for msg, _ in notifications)
+
+    def test_update_item_fetches_source(self) -> None:
+        """Test update_item fetches source updates."""
+        from unittest.mock import MagicMock
+
+        from skill_installer.tui.operations import ItemOperations
+
+        mock_gitops = MagicMock()
+        mock_registry = MagicMock()
+        mock_source = MagicMock()
+        mock_source.url = "https://github.com/test/repo.git"
+        mock_source.name = "test-source"
+        mock_registry.get_source.return_value = mock_source
+
+        mock_result = MagicMock()
+        mock_result.success = True
+        mock_installer = MagicMock()
+        mock_installer.install_item.return_value = mock_result
+
+        ops = ItemOperations(
+            registry_manager=mock_registry,
+            gitops=mock_gitops,
+            installer=mock_installer,
+        )
+
+        item = _make_test_display_item(installed_platforms=["claude"])
+        ops.update_item(item)
+
+        mock_gitops.clone_or_fetch.assert_called_once_with(
+            mock_source.url, mock_source.name
+        )
+
+    def test_update_item_reinstalls_to_platforms(self) -> None:
+        """Test update_item reinstalls to all installed platforms."""
+        from unittest.mock import MagicMock
+
+        from skill_installer.tui.operations import ItemOperations
+
+        notifications = []
+
+        def mock_notify(msg: str, severity: str) -> None:
+            notifications.append((msg, severity))
+
+        mock_result = MagicMock()
+        mock_result.success = True
+        mock_installer = MagicMock()
+        mock_installer.install_item.return_value = mock_result
+
+        ops = ItemOperations(
+            installer=mock_installer,
+            notify=mock_notify,
+        )
+
+        item = _make_test_display_item(installed_platforms=["claude", "vscode"])
+        ops.update_item(item)
+
+        # Should call install_item for each platform
+        assert mock_installer.install_item.call_count == 2
+
+    def test_update_item_success_notification(self) -> None:
+        """Test update_item shows success notification."""
+        from unittest.mock import MagicMock
+
+        from skill_installer.tui.operations import ItemOperations
+
+        notifications = []
+
+        def mock_notify(msg: str, severity: str) -> None:
+            notifications.append((msg, severity))
+
+        mock_result = MagicMock()
+        mock_result.success = True
+        mock_installer = MagicMock()
+        mock_installer.install_item.return_value = mock_result
+
+        ops = ItemOperations(
+            installer=mock_installer,
+            notify=mock_notify,
+        )
+
+        item = _make_test_display_item(
+            name="test-skill",
+            installed_platforms=["claude"],
+        )
+        ops.update_item(item)
+
+        assert any("Updated test-skill" in msg for msg, _ in notifications)
+
+    def test_update_item_failure(self) -> None:
+        """Test update_item shows error on failure."""
+        from unittest.mock import MagicMock
+
+        from skill_installer.tui.operations import ItemOperations
+
+        notifications = []
+
+        def mock_notify(msg: str, severity: str) -> None:
+            notifications.append((msg, severity))
+
+        mock_result = MagicMock()
+        mock_result.success = False
+        mock_result.error = "Permission denied"
+        mock_installer = MagicMock()
+        mock_installer.install_item.return_value = mock_result
+
+        ops = ItemOperations(
+            installer=mock_installer,
+            notify=mock_notify,
+        )
+
+        item = _make_test_display_item(installed_platforms=["claude"])
+        ops.update_item(item)
+
+        assert any("Permission denied" in msg for msg, sev in notifications if sev == "error")
+
+    def test_update_item_reloads_data(self) -> None:
+        """Test update_item reloads data on success."""
+        from unittest.mock import MagicMock
+
+        from skill_installer.tui.operations import ItemOperations
+
+        load_data_calls = []
+
+        def mock_load_data() -> None:
+            load_data_calls.append(True)
+
+        mock_result = MagicMock()
+        mock_result.success = True
+        mock_installer = MagicMock()
+        mock_installer.install_item.return_value = mock_result
+
+        ops = ItemOperations(
+            installer=mock_installer,
+            load_data=mock_load_data,
+        )
+
+        item = _make_test_display_item(installed_platforms=["claude"])
+        ops.update_item(item)
+
+        assert len(load_data_calls) == 1
+
+    def test_update_item_fetch_failure(self) -> None:
+        """Test update_item shows error when fetch fails."""
+        from unittest.mock import MagicMock
+
+        from skill_installer.tui.operations import ItemOperations
+
+        notifications = []
+
+        def mock_notify(msg: str, severity: str) -> None:
+            notifications.append((msg, severity))
+
+        mock_gitops = MagicMock()
+        mock_gitops.clone_or_fetch.side_effect = Exception("Network error")
+
+        mock_registry = MagicMock()
+        mock_source = MagicMock()
+        mock_source.url = "https://github.com/test/repo.git"
+        mock_source.name = "test-source"
+        mock_registry.get_source.return_value = mock_source
+
+        mock_installer = MagicMock()
+
+        ops = ItemOperations(
+            registry_manager=mock_registry,
+            gitops=mock_gitops,
+            installer=mock_installer,
+            notify=mock_notify,
+        )
+
+        item = _make_test_display_item(installed_platforms=["claude"])
+        ops.update_item(item)
+
+        assert any("Network error" in msg for msg, sev in notifications if sev == "error")
+        # Should not call installer if fetch failed
+        mock_installer.install_item.assert_not_called()

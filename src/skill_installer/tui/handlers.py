@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from skill_installer.tui.models import DisplayItem, DisplaySource
@@ -21,6 +22,7 @@ class ScreenHandlers:
         load_data: Callable[[], None] | None = None,
         install_item: Callable[[DisplayItem, list[str] | None, bool], None] | None = None,
         uninstall_item: Callable[[DisplayItem], None] | None = None,
+        update_item: Callable[[DisplayItem], None] | None = None,
         install_item_to_project: Callable[[DisplayItem, Path], None] | None = None,
         update_source: Callable[[DisplaySource], None] | None = None,
         remove_source: Callable[[DisplaySource], None] | None = None,
@@ -37,6 +39,7 @@ class ScreenHandlers:
             load_data: Callback to reload UI data.
             install_item: Callback to install an item.
             uninstall_item: Callback to uninstall an item.
+            update_item: Callback to update an installed item.
             install_item_to_project: Callback to install to project scope.
             update_source: Callback to update a source.
             remove_source: Callback to remove a source.
@@ -50,6 +53,7 @@ class ScreenHandlers:
         self._load_data = load_data
         self._install_item = install_item
         self._uninstall_item = uninstall_item
+        self._update_item = update_item
         self._install_item_to_project = install_item_to_project
         self._update_source = update_source
         self._remove_source = remove_source
@@ -123,6 +127,26 @@ class ScreenHandlers:
 
         elif option_id == "open_homepage":
             self._handle_open_homepage(item)
+
+    def handle_installed_item_detail_result(
+        self, result: tuple[str, DisplayItem] | None
+    ) -> None:
+        """Handle result from InstalledItemDetailScreen.
+
+        Args:
+            result: Tuple of (option_id, item) or None if cancelled.
+        """
+        if result is None:
+            return
+
+        option_id, item = result
+
+        if option_id == "update":
+            if self._update_item:
+                self._update_item(item)
+
+        elif option_id == "uninstall":
+            self._handle_uninstall(item)
 
     def _handle_install_user(self, item: DisplayItem) -> None:
         """Handle install to user scope."""

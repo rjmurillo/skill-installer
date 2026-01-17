@@ -211,7 +211,7 @@ tools:
         assert errors == []
 
     def test_validate_agent_no_tools(self, platform: VSCodePlatform) -> None:
-        """Test validating agent without tools field."""
+        """Test validating agent without tools field passes (tools is optional)."""
         content = """---
 name: test
 ---
@@ -219,8 +219,7 @@ name: test
 # Test
 """
         errors = platform.validate_agent(content)
-        assert len(errors) == 1
-        assert "tools" in errors[0].lower()
+        assert errors == []  # No required fields per VSCode spec
 
 
 class TestCopilotPlatform:
@@ -276,7 +275,7 @@ tools:
         assert errors == []
 
     def test_validate_agent_missing_fields(self, platform: CopilotPlatform) -> None:
-        """Test validating agent with missing required fields."""
+        """Test validating agent with minimal frontmatter passes (all fields optional)."""
         content = """---
 description: Test
 ---
@@ -284,7 +283,7 @@ description: Test
 # Test
 """
         errors = platform.validate_agent(content)
-        assert len(errors) == 2  # Missing both name and tools
+        assert errors == []  # No required fields per GitHub Copilot spec
 
 
 class TestProjectInstallPaths:

@@ -63,8 +63,8 @@ class CopilotPlatform(BasePlatform):
         raise ValueError(f"Unknown item type: {item_type}")
 
     def get_required_fields(self) -> list[str]:
-        """Copilot requires both 'name' and 'tools' fields."""
-        return ["name:", "tools:"]
+        """Copilot agents have no required frontmatter fields per spec."""
+        return []
 
     def get_field_error_message(self, field: str) -> str:
         """Provide Copilot-specific error messages."""

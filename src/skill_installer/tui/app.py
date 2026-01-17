@@ -12,11 +12,12 @@ from textual.widgets import Footer, Static, TabbedContent, TabPane
 
 from skill_installer.tui.data_manager import DataManager
 from skill_installer.tui.handlers import ScreenHandlers
-from skill_installer.tui.models import DisplayItem, DisplaySource
+from skill_installer.tui.models import DisplaySource
 from skill_installer.tui.operations import ItemOperations
 from skill_installer.tui.panes.discover import DiscoverPane
 from skill_installer.tui.panes.installed import InstalledPane
 from skill_installer.tui.panes.marketplaces import MarketplacesPane
+from skill_installer.tui.screens.installed_item_detail import InstalledItemDetailScreen
 from skill_installer.tui.screens.item_detail import ItemDetailScreen
 from skill_installer.tui.screens.source_detail import SourceDetailScreen
 from skill_installer.tui.styles import APP_CSS
@@ -74,6 +75,7 @@ class SkillInstallerApp(App):
             load_data=self._load_data,
             install_item=self._operations.install_item,
             uninstall_item=self._operations.uninstall_item,
+            update_item=self._operations.update_item,
             install_item_to_project=self._operations.install_item_to_project,
             update_source=self._update_source,
             remove_source=self._remove_source,
@@ -206,6 +208,11 @@ class SkillInstallerApp(App):
             self.push_screen(
                 ItemDetailScreen(item, registry_manager=self.registry_manager),
                 self._handlers.handle_item_detail_result,
+            )
+        elif tabbed.active == "installed":
+            self.push_screen(
+                InstalledItemDetailScreen(item, registry_manager=self.registry_manager),
+                self._handlers.handle_installed_item_detail_result,
             )
 
     @on(ItemListView.ItemToggled)

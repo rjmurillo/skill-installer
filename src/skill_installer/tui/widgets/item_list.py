@@ -61,18 +61,28 @@ class ItemRow(Widget):
             first_line_parts.append(f" {status}")
         first_line = "".join(first_line_parts)
 
-        # Second line: description (truncated if needed)
+        # Second line: [relative_path] description (truncated if needed)
+        # Show parent directory path for disambiguation when available
         description = self.item.description or "No description"
-        max_desc_length = 80
+        path_prefix = ""
+        if self.item.relative_path:
+            # Extract parent directory from relative path for disambiguation
+            from pathlib import PurePosixPath
+            parent = str(PurePosixPath(self.item.relative_path).parent)
+            if parent and parent != ".":
+                path_prefix = f"[{parent}] "
+
+        max_desc_length = 80 - len(path_prefix)
         if len(description) > max_desc_length:
             description = description[:max_desc_length - 3] + "..."
+        second_line = path_prefix + description
 
         with Horizontal():
             self._indicator = Static(indicator, classes="item-indicator")
             yield self._indicator
             with Vertical():
                 yield Static(first_line, classes="item-header")
-                yield Static(description, classes="item-description")
+                yield Static(second_line, classes="item-description")
 
     def watch_selected(self, selected: bool) -> None:
         self.set_class(selected, "selected")

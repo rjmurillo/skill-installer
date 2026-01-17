@@ -52,30 +52,35 @@ class InstallResult:
 
 
 class Installer:
-    """Handles installation of skills and agents."""
+    """Handles installation of skills and agents.
+
+    Follows Separate Use from Creation: constructor requires all dependencies.
+    Use factory method `create()` for production instantiation with defaults.
+    """
 
     def __init__(
         self,
         registry: RegistryManager,
         gitops: GitOps,
-        transformer: TransformEngine | None = None,
-        filesystem: FileSystem | None = None,
+        transformer: TransformEngine,
+        filesystem: FileSystem,
     ) -> None:
-        """Initialize installer.
+        """Initialize installer with required dependencies.
 
         Args:
             registry: Registry manager instance (required).
             gitops: Git operations instance (required).
-            transformer: Transform engine instance (optional, created if not provided).
-            filesystem: Filesystem abstraction (optional, uses RealFileSystem if not provided).
+            transformer: Transform engine instance (required).
+            filesystem: Filesystem abstraction (required).
 
         Note:
-            Prefer using factory method `create()` for construction.
+            Use factory method `create()` for production code.
+            Direct construction is for testing with explicit dependencies.
         """
         self.registry = registry
         self.gitops = gitops
-        self.transformer = transformer or TransformEngine()
-        self.fs = filesystem or RealFileSystem()
+        self.transformer = transformer
+        self.fs = filesystem
 
     @classmethod
     def create(
@@ -84,8 +89,12 @@ class Installer:
         gitops: GitOps,
         transformer: TransformEngine | None = None,
         filesystem: FileSystem | None = None,
-    ) -> "Installer":
-        """Create an installer with the specified dependencies.
+    ) -> Installer:
+        """Factory method for production instantiation.
+
+        Creates an installer with optional default dependencies.
+        This is the only place where defaults are created, separating
+        object creation from object use.
 
         Args:
             registry: Registry manager instance.
@@ -99,8 +108,8 @@ class Installer:
         return cls(
             registry=registry,
             gitops=gitops,
-            transformer=transformer,
-            filesystem=filesystem,
+            transformer=transformer or TransformEngine(),
+            filesystem=filesystem or RealFileSystem(),
         )
 
     def install_item(
@@ -128,7 +137,7 @@ class Installer:
         Raises:
             ValueError: If scope="project" but project_root is None.
         """
-        item_id = f"{source_name}/{item.item_type}/{item.name}"
+        item_id = item.make_item_id(source_name)
 
         # Validate project scope parameters
         if scope == "project" and project_root is None:
@@ -151,6 +160,18 @@ class Installer:
             # Detect source platform if not specified
             if source_platform is None:
                 source_platform = self._detect_source_platform(item)
+
+            # Block cross-platform installation between incompatible platforms
+            # Claude Code and VSCode/Copilot use incompatible frontmatter formats
+            error = self._check_cross_platform_compatibility(source_platform, target_platform)
+            if error:
+                return InstallResult(
+                    success=False,
+                    item_id=item_id,
+                    platform=target_platform,
+                    installed_path=None,
+                    error=error,
+                )
 
             # Get content and transform if needed
             content = self._get_content(item)
@@ -190,7 +211,7 @@ class Installer:
             self.registry.add_installed(
                 source_name=source_name,
                 item_type=item.item_type,
-                name=item.name,
+                name=item.item_key,
                 platform=target_platform,
                 installed_path=str(install_path),
                 source_hash=source_hash,
@@ -270,7 +291,7 @@ class Installer:
         Returns:
             True if update needed, False otherwise.
         """
-        item_id = f"{source_name}/{item.item_type}/{item.name}"
+        item_id = item.make_item_id(source_name)
         installed = self.registry.get_installed(item_id, platform)
 
         if not installed:
@@ -309,6 +330,55 @@ class Installer:
         if item.path.name.endswith(".agent.md"):
             return "vscode"
         return "claude"
+
+    def _check_cross_platform_compatibility(
+        self, source_platform: str, target_platform: str
+    ) -> str | None:
+        """Check if cross-platform installation is allowed.
+
+        Claude Code and VSCode/Copilot use incompatible frontmatter formats.
+        Cross-installation between these platform families is blocked.
+
+        References:
+            - Claude Code: https://docs.anthropic.com/en/docs/agents-and-tools/claude-code/agents
+            - Copilot: https://docs.github.com/en/copilot/reference/custom-agents-configuration
+            - VSCode: https://code.visualstudio.com/docs/copilot/customization/custom-agents
+
+        Args:
+            source_platform: Source platform name.
+            target_platform: Target platform name.
+
+        Returns:
+            Error message if incompatible, None if compatible.
+        """
+        if source_platform == target_platform:
+            return None
+
+        claude_platforms = {"claude"}
+        vscode_platforms = {"vscode", "vscode-insiders", "copilot"}
+
+        source_is_claude = source_platform.lower() in claude_platforms
+        target_is_claude = target_platform.lower() in claude_platforms
+        source_is_vscode = source_platform.lower() in vscode_platforms
+        target_is_vscode = target_platform.lower() in vscode_platforms
+
+        # Block Claude to VSCode/Copilot
+        if source_is_claude and target_is_vscode:
+            return (
+                f"Cannot install Claude agent to {target_platform}: "
+                "incompatible frontmatter formats. "
+                "See ROADMAP.md for details."
+            )
+
+        # Block VSCode/Copilot to Claude
+        if source_is_vscode and target_is_claude:
+            return (
+                f"Cannot install {source_platform} agent to Claude: "
+                "incompatible frontmatter formats. "
+                "See ROADMAP.md for details."
+            )
+
+        return None
 
     def _install_skill(self, source_path: Path, install_path: Path) -> None:
         """Install a skill directory.

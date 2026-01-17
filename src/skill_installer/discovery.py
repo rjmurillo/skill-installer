@@ -18,11 +18,32 @@ class DiscoveredItem:
     """A discovered item in a source repository."""
 
     name: str
-    item_type: str  # agent, skill, command
+    item_type: str  # agent, skill, command, prompt
     path: Path
     description: str = ""
     platforms: list[str] = field(default_factory=list)
     frontmatter: dict = field(default_factory=dict)
+    relative_path: str = ""  # Path relative to repo root for disambiguation
+
+    @property
+    def item_key(self) -> str:
+        """The unique key for this item within its type.
+
+        Uses relative_path if available for disambiguation, otherwise name.
+        This is the single source of truth for item identification.
+        """
+        return self.relative_path if self.relative_path else self.name
+
+    def make_item_id(self, source_name: str) -> str:
+        """Build the canonical item ID.
+
+        Args:
+            source_name: Name of the source repository.
+
+        Returns:
+            The canonical item ID in format: {source}/{type}/{key}
+        """
+        return f"{source_name}/{self.item_type}/{self.item_key}"
 
 
 class Discovery:
@@ -137,17 +158,18 @@ class Discovery:
         return self._filter_by_platform(items, platform) if platform else items
 
     def _auto_discover_agents(self, repo_path: Path) -> list[DiscoveredItem]:
-        """Auto-discover agents by searching for agent files.
+        """Auto-discover agents and prompts by searching for agent/prompt files.
 
         Discovers:
         - *.agent.md files anywhere (VS Code/Copilot agents)
+        - *.prompt.md files anywhere (VS Code prompts)
         - *.md files with valid frontmatter (name field required)
 
         Args:
             repo_path: Path to the repository root.
 
         Returns:
-            List of discovered agents.
+            List of discovered agents and prompts.
         """
         items = []
         seen_paths: set[Path] = set()
@@ -157,25 +179,37 @@ class Discovery:
             if any(skip_dir in agent_file.parts for skip_dir in self.SKIP_DIRS):
                 continue
             if agent_file not in seen_paths:
-                item = self._parse_agent_file(agent_file, "agent")
+                item = self._parse_agent_file(agent_file, "agent", repo_path=repo_path)
                 if item:
                     items.append(item)
                     seen_paths.add(agent_file)
 
-        # 2. Find .md files with valid agent frontmatter (must have 'name' field)
+        # 2. Find all .prompt.md files (VS Code prompts)
+        for prompt_file in repo_path.glob("**/*.prompt.md"):
+            if any(skip_dir in prompt_file.parts for skip_dir in self.SKIP_DIRS):
+                continue
+            if prompt_file not in seen_paths:
+                item = self._parse_agent_file(prompt_file, "prompt", repo_path=repo_path)
+                if item:
+                    items.append(item)
+                    seen_paths.add(prompt_file)
+
+        # 3. Find .md files with valid agent frontmatter (must have 'name' field)
         for md_file in repo_path.glob("**/*.md"):
             if any(skip_dir in md_file.parts for skip_dir in self.SKIP_DIRS):
                 continue
             if md_file.name in self.SKIP_FILES:
                 continue
-            if md_file.name.endswith(".agent.md"):
+            if md_file.name.endswith(".agent.md") or md_file.name.endswith(".prompt.md"):
                 continue  # Already handled above
             if md_file.name == self.SKILL_PATTERN:
                 continue  # Skills are handled separately
             if md_file in seen_paths:
                 continue
 
-            item = self._parse_agent_file(md_file, "agent", require_frontmatter=True)
+            item = self._parse_agent_file(
+                md_file, "agent", require_frontmatter=True, repo_path=repo_path
+            )
             if item:
                 items.append(item)
                 seen_paths.add(md_file)
@@ -227,7 +261,7 @@ class Discovery:
             if skill_path == repo_path:
                 continue
 
-            item = self._parse_skill_dir(skill_path)
+            item = self._parse_skill_dir(skill_path, repo_path=repo_path)
             if item:
                 items.append(item)
 
@@ -254,21 +288,28 @@ class Discovery:
             # Commands are .md files with frontmatter
             for path in commands_dir.glob("*.md"):
                 if path.is_file() and path.name not in self.SKIP_FILES:
-                    item = self._parse_agent_file(path, "command", require_frontmatter=True)
+                    item = self._parse_agent_file(
+                        path, "command", require_frontmatter=True, repo_path=repo_path
+                    )
                     if item:
                         items.append(item)
 
         return items
 
     def _parse_agent_file(
-        self, path: Path, item_type: str, require_frontmatter: bool = False
+        self,
+        path: Path,
+        item_type: str,
+        require_frontmatter: bool = False,
+        repo_path: Path | None = None,
     ) -> DiscoveredItem | None:
-        """Parse an agent/command file.
+        """Parse an agent/command/prompt file.
 
         Args:
             path: Path to the file.
-            item_type: Type of item (agent, command).
+            item_type: Type of item (agent, command, prompt).
             require_frontmatter: If True, only return item if frontmatter has 'name' field.
+            repo_path: Repository root path for computing relative_path.
 
         Returns:
             DiscoveredItem or None if parsing fails or validation fails.
@@ -286,15 +327,25 @@ class Discovery:
             name = frontmatter.get("name", path.stem)
             if name.endswith(".agent"):
                 name = name[:-6]
+            if name.endswith(".prompt"):
+                name = name[:-7]
 
             description = frontmatter.get("description", "")
 
             # Determine platforms based on file extension
             platforms = []
-            if path.suffix == ".md" and not path.name.endswith(".agent.md"):
-                platforms = ["claude"]
-            elif path.name.endswith(".agent.md"):
+            if path.name.endswith(".agent.md") or path.name.endswith(".prompt.md"):
                 platforms = ["vscode", "copilot"]
+            elif path.suffix == ".md":
+                platforms = ["claude"]
+
+            # Compute relative path from repo root
+            relative_path = ""
+            if repo_path:
+                try:
+                    relative_path = str(path.relative_to(repo_path))
+                except ValueError:
+                    relative_path = path.name
 
             return DiscoveredItem(
                 name=name,
@@ -303,18 +354,23 @@ class Discovery:
                 description=description,
                 platforms=platforms,
                 frontmatter=frontmatter,
+                relative_path=relative_path,
             )
         except Exception:
             return None
 
     def _parse_skill_dir(
-        self, path: Path, plugin_name: str | None = None
+        self,
+        path: Path,
+        plugin_name: str | None = None,
+        repo_path: Path | None = None,
     ) -> DiscoveredItem | None:
         """Parse a skill directory.
 
         Args:
             path: Path to the skill directory.
             plugin_name: Optional plugin name from marketplace manifest.
+            repo_path: Repository root path for computing relative_path.
 
         Returns:
             DiscoveredItem or None if parsing fails.
@@ -331,6 +387,14 @@ class Discovery:
             name = frontmatter.get("name", path.name)
             description = frontmatter.get("description", "")
 
+            # Compute relative path from repo root
+            relative_path = ""
+            if repo_path:
+                try:
+                    relative_path = str(path.relative_to(repo_path))
+                except ValueError:
+                    relative_path = path.name
+
             return DiscoveredItem(
                 name=name,
                 item_type="skill",
@@ -338,6 +402,7 @@ class Discovery:
                 description=description,
                 platforms=["claude"],  # Skills only for Claude
                 frontmatter=frontmatter,
+                relative_path=relative_path,
             )
         except Exception:
             return None

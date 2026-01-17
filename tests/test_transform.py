@@ -16,59 +16,38 @@ def transformer() -> TransformEngine:
 class TestTransformEngine:
     """Tests for TransformEngine class."""
 
-    def test_claude_to_vscode(self, transformer: TransformEngine) -> None:
-        """Test transforming Claude format to VS Code format."""
-        claude_content = """---
-name: analyst
-description: Research specialist
-model: sonnet
----
+    def test_claude_to_vscode_blocked(self, transformer: TransformEngine) -> None:
+        """Test that Claude to VSCode transform is blocked."""
+        with pytest.raises(NotImplementedError, match="not supported"):
+            transformer.claude_to_vscode("content")
 
-# Analyst Agent
+    def test_vscode_to_claude_blocked(self, transformer: TransformEngine) -> None:
+        """Test that VSCode to Claude transform is blocked."""
+        with pytest.raises(NotImplementedError, match="not supported"):
+            transformer.vscode_to_claude("content")
 
-Use Task(subagent_type="implementer", prompt="Write code") for implementation.
-"""
-        result = transformer.claude_to_vscode(claude_content)
+    def test_copilot_to_claude_blocked(self, transformer: TransformEngine) -> None:
+        """Test that Copilot to Claude transform is blocked."""
+        with pytest.raises(NotImplementedError, match="not supported"):
+            transformer.copilot_to_claude("content")
 
-        # Should add tools
-        assert "tools:" in result
-        # Should transform model name
-        assert "claude-sonnet-4-5" in result
-        # Should transform syntax
-        assert '#runSubagent("implementer"' in result
-        assert "Task(subagent_type=" not in result
-
-    def test_vscode_to_claude(self, transformer: TransformEngine) -> None:
-        """Test transforming VS Code format to Claude format."""
-        vscode_content = """---
-name: analyst
-description: Research specialist
-model: claude-sonnet-4-5
-tools:
-  - read
-  - edit
----
-
-# Analyst Agent
-
-Use #runSubagent("implementer", "Write code") for implementation.
-"""
-        result = transformer.vscode_to_claude(vscode_content)
-
-        # Should remove tools
-        assert "tools:" not in result
-        # Should transform model name
-        assert "sonnet" in result
-        assert "claude-sonnet-4-5" not in result
-        # Should transform syntax
-        assert 'Task(subagent_type="implementer"' in result
-        assert "#runSubagent" not in result
+    def test_claude_to_copilot_blocked(self, transformer: TransformEngine) -> None:
+        """Test that Claude to Copilot transform is blocked."""
+        with pytest.raises(NotImplementedError, match="not supported"):
+            transformer.claude_to_copilot("content")
 
     def test_transform_same_platform(self, transformer: TransformEngine) -> None:
         """Test that same platform returns unchanged content."""
         content = "# Test content"
         result = transformer.transform(content, "claude", "claude")
         assert result == content
+
+    def test_transform_cross_platform_blocked(self, transformer: TransformEngine) -> None:
+        """Test that cross-platform transforms raise error."""
+        with pytest.raises(ValueError, match="Cannot transform"):
+            transformer.transform("content", "claude", "vscode")
+        with pytest.raises(ValueError, match="Cannot transform"):
+            transformer.transform("content", "vscode", "claude")
 
     def test_transform_unknown_platforms(self, transformer: TransformEngine) -> None:
         """Test that unknown platforms raise error."""
@@ -114,47 +93,33 @@ name: test
         result = transformer._create_frontmatter_string({})
         assert result == ""
 
-    def test_transform_frontmatter_to_vscode(self, transformer: TransformEngine) -> None:
-        """Test transforming frontmatter for VS Code."""
-        frontmatter = {"name": "test", "model": "sonnet"}
-        result = transformer._transform_frontmatter_to_vscode(frontmatter)
-        assert "tools" in result
-        assert result["model"] == "claude-sonnet-4-5"
+    def test_transform_frontmatter_to_vscode_blocked(
+        self, transformer: TransformEngine
+    ) -> None:
+        """Test that frontmatter transform to VSCode is blocked."""
+        with pytest.raises(NotImplementedError, match="disabled|not supported"):
+            transformer._transform_frontmatter_to_vscode({"name": "test"})
 
-    def test_transform_frontmatter_to_claude(self, transformer: TransformEngine) -> None:
-        """Test transforming frontmatter for Claude."""
-        frontmatter = {
-            "name": "test",
-            "model": "claude-sonnet-4-5",
-            "tools": ["read", "edit"],
-        }
-        result = transformer._transform_frontmatter_to_claude(frontmatter)
-        assert "tools" not in result
-        assert result["model"] == "sonnet"
+    def test_transform_frontmatter_to_claude_blocked(
+        self, transformer: TransformEngine
+    ) -> None:
+        """Test that frontmatter transform to Claude is blocked."""
+        with pytest.raises(NotImplementedError, match="disabled|not supported"):
+            transformer._transform_frontmatter_to_claude({"name": "test"})
 
-    def test_transform_syntax_to_vscode(self, transformer: TransformEngine) -> None:
-        """Test transforming Claude syntax to VS Code syntax."""
-        body = 'Use Task(subagent_type="analyst", prompt="Research this") to investigate.'
-        result = transformer._transform_syntax_to_vscode(body)
-        assert '#runSubagent("analyst", "Research this")' in result
+    def test_transform_syntax_to_vscode_blocked(
+        self, transformer: TransformEngine
+    ) -> None:
+        """Test that syntax transform to VSCode is blocked."""
+        with pytest.raises(NotImplementedError, match="disabled|not supported"):
+            transformer._transform_syntax_to_vscode("body")
 
-    def test_transform_syntax_to_vscode_no_prompt(self, transformer: TransformEngine) -> None:
-        """Test transforming Claude syntax without prompt."""
-        body = 'Use Task(subagent_type="analyst") to investigate.'
-        result = transformer._transform_syntax_to_vscode(body)
-        assert '#runSubagent("analyst")' in result
-
-    def test_transform_syntax_to_claude(self, transformer: TransformEngine) -> None:
-        """Test transforming VS Code syntax to Claude syntax."""
-        body = 'Use #runSubagent("analyst", "Research this") to investigate.'
-        result = transformer._transform_syntax_to_claude(body)
-        assert 'Task(subagent_type="analyst", prompt="Research this")' in result
-
-    def test_transform_syntax_to_claude_no_prompt(self, transformer: TransformEngine) -> None:
-        """Test transforming VS Code syntax without prompt."""
-        body = 'Use #runSubagent("analyst") to investigate.'
-        result = transformer._transform_syntax_to_claude(body)
-        assert 'Task(subagent_type="analyst")' in result
+    def test_transform_syntax_to_claude_blocked(
+        self, transformer: TransformEngine
+    ) -> None:
+        """Test that syntax transform to Claude is blocked."""
+        with pytest.raises(NotImplementedError, match="disabled|not supported"):
+            transformer._transform_syntax_to_claude("body")
 
     def test_detect_platform_claude(self, transformer: TransformEngine) -> None:
         """Test detecting Claude format."""
@@ -183,76 +148,29 @@ Use #runSubagent("analyst") to research.
         content = "# Just content"
         assert transformer.detect_platform(content) is None
 
-    def test_copilot_to_claude(self, transformer: TransformEngine) -> None:
-        """Test Copilot to Claude transformation (same as VS Code)."""
-        content = """---
-name: test
-tools:
-  - read
----
-
-Use #runSubagent("analyst") to research.
-"""
-        result = transformer.copilot_to_claude(content)
-        assert 'Task(subagent_type="analyst")' in result
-
-    def test_claude_to_copilot(self, transformer: TransformEngine) -> None:
-        """Test Claude to Copilot transformation (same as VS Code)."""
-        content = """---
-name: test
----
-
-Use Task(subagent_type="analyst") to research.
-"""
-        result = transformer.claude_to_copilot(content)
-        assert '#runSubagent("analyst")' in result
-
 
 class TestTransformStrategies:
     """Tests for individual transformation strategies."""
 
-    def test_claude_to_vscode_strategy_frontmatter(self) -> None:
-        """Test ClaudeToVSCodeStrategy frontmatter transformation."""
+    def test_claude_to_vscode_strategy_blocked(self) -> None:
+        """Test ClaudeToVSCodeStrategy is blocked."""
         from skill_installer.transform import ClaudeToVSCodeStrategy
 
         strategy = ClaudeToVSCodeStrategy()
-        frontmatter = {"name": "test", "model": "sonnet"}
-        result = strategy.transform_frontmatter(frontmatter)
+        with pytest.raises(NotImplementedError, match="disabled|not supported"):
+            strategy.transform_frontmatter({"name": "test"})
+        with pytest.raises(NotImplementedError, match="disabled|not supported"):
+            strategy.transform_syntax("body")
 
-        assert result["tools"] == ["read", "edit", "shell", "search"]
-        assert result["model"] == "claude-sonnet-4-5"
-
-    def test_claude_to_vscode_strategy_syntax(self) -> None:
-        """Test ClaudeToVSCodeStrategy syntax transformation."""
-        from skill_installer.transform import ClaudeToVSCodeStrategy
-
-        strategy = ClaudeToVSCodeStrategy()
-        body = 'Use Task(subagent_type="analyst") to investigate.'
-        result = strategy.transform_syntax(body)
-
-        assert '#runSubagent("analyst")' in result
-
-    def test_vscode_to_claude_strategy_frontmatter(self) -> None:
-        """Test VSCodeToClaudeStrategy frontmatter transformation."""
+    def test_vscode_to_claude_strategy_blocked(self) -> None:
+        """Test VSCodeToClaudeStrategy is blocked."""
         from skill_installer.transform import VSCodeToClaudeStrategy
 
         strategy = VSCodeToClaudeStrategy()
-        frontmatter = {"model": "claude-sonnet-4-5", "tools": ["read"]}
-        result = strategy.transform_frontmatter(frontmatter)
-
-        assert "tools" not in result
-        assert result["model"] == "sonnet"
-        assert result["name"] == "agent"
-
-    def test_vscode_to_claude_strategy_syntax(self) -> None:
-        """Test VSCodeToClaudeStrategy syntax transformation."""
-        from skill_installer.transform import VSCodeToClaudeStrategy
-
-        strategy = VSCodeToClaudeStrategy()
-        body = 'Use #runSubagent("analyst") to investigate.'
-        result = strategy.transform_syntax(body)
-
-        assert 'Task(subagent_type="analyst")' in result
+        with pytest.raises(NotImplementedError, match="disabled|not supported"):
+            strategy.transform_frontmatter({"name": "test"})
+        with pytest.raises(NotImplementedError, match="disabled|not supported"):
+            strategy.transform_syntax("body")
 
     def test_identity_strategy_no_change(self) -> None:
         """Test IdentityStrategy returns content unchanged."""

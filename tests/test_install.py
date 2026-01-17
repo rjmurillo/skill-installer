@@ -27,8 +27,8 @@ def temp_gitops(tmp_path: Path) -> GitOps:
 
 @pytest.fixture
 def installer(temp_registry: RegistryManager, temp_gitops: GitOps) -> Installer:
-    """Create an Installer instance."""
-    return Installer(registry=temp_registry, gitops=temp_gitops)
+    """Create an Installer instance using factory method."""
+    return Installer.create(registry=temp_registry, gitops=temp_gitops)
 
 
 @pytest.fixture
@@ -270,7 +270,8 @@ class TestInstallerEdgeCases:
         """Test installing skill to platform that doesn't support skills."""
         result = installer.install_item(sample_skill, "source", "vscode")
         assert result.success is False
-        assert "does not support" in result.error.lower()
+        # Cross-platform blocking happens before skill support check
+        assert "incompatible" in result.error.lower() or "does not support" in result.error.lower()
 
     def test_install_with_transform(
         self,

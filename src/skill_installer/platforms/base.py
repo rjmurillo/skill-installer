@@ -59,11 +59,13 @@ class BasePlatform(ABC):
         """Get the required frontmatter fields for this platform.
 
         Override in subclasses to specify platform-specific requirements.
-
+        Per GitHub/VSCode specs, frontmatter fields are optional for agents.
+        https://docs.github.com/en/copilot/reference/custom-agents-configuration
+        
         Returns:
             List of field names that must be present in frontmatter.
         """
-        return ["name:"]
+        return []
 
     def get_field_error_message(self, field: str) -> str:
         """Get error message for a missing field.
