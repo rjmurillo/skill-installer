@@ -6,11 +6,6 @@ from pathlib import Path
 
 import pytest
 
-from skill_installer.discovery import DiscoveredItem
-from skill_installer.gitops import GitOps
-from skill_installer.install import Installer
-from skill_installer.registry import RegistryManager
-
 
 @pytest.fixture
 def temp_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:

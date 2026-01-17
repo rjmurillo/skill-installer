@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from skill_installer.discovery import Discovery, DiscoveredItem
+from skill_installer.discovery import DiscoveredItem, Discovery
 
 
 @pytest.fixture
@@ -85,7 +85,7 @@ class TestDiscovery:
 
     def test_discover_all(self, discovery: Discovery, sample_repo: Path) -> None:
         """Test discovering all items in a repository."""
-        items = discovery.discover_all(sample_repo, "src", ".claude/skills", ".claude/commands")
+        items = discovery.discover_all(sample_repo)
 
         # Should find agents, skills, and commands
         agents = [i for i in items if i.item_type == "agent"]
@@ -97,9 +97,8 @@ class TestDiscovery:
         assert len(commands) == 1
 
     def test_discover_agents(self, discovery: Discovery, sample_repo: Path) -> None:
-        """Test discovering agents."""
-        agents_dir = sample_repo / "src"
-        items = discovery._discover_agents(agents_dir)
+        """Test auto-discovering agents."""
+        items = discovery._auto_discover_agents(sample_repo)
 
         names = [i.name for i in items]
         assert "analyst" in names
@@ -114,9 +113,8 @@ class TestDiscovery:
         assert items[0].item_type == "skill"
 
     def test_discover_commands(self, discovery: Discovery, sample_repo: Path) -> None:
-        """Test discovering commands."""
-        commands_dir = sample_repo / ".claude" / "commands"
-        items = discovery._discover_commands(commands_dir)
+        """Test auto-discovering commands."""
+        items = discovery._auto_discover_commands(sample_repo)
 
         assert len(items) == 1
         assert items[0].name == "commit"

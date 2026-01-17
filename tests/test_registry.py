@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -10,10 +9,8 @@ import pytest
 
 from skill_installer.registry import (
     InstalledItem,
-    InstalledRegistry,
     RegistryManager,
     Source,
-    SourcePaths,
     SourceRegistry,
 )
 
@@ -59,11 +56,9 @@ class TestSource:
             name="test",
             url="https://github.com/test/repo",
             ref="develop",
-            paths=SourcePaths(agents="agents", skills="skills", commands="commands"),
             platforms=["claude"],
         )
         assert source.ref == "develop"
-        assert source.paths.agents == "agents"
         assert source.platforms == ["claude"]
 
 

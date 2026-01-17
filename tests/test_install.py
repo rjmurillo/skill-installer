@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
 from skill_installer.discovery import DiscoveredItem
 from skill_installer.gitops import GitOps
-from skill_installer.install import InstallResult, Installer
+from skill_installer.install import Installer, InstallResult
 from skill_installer.registry import RegistryManager
 
 
