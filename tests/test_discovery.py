@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from skill_installer.discovery import Discovery, DiscoveredItem
+from skill_installer.discovery import DiscoveredItem, Discovery
 
 
 @pytest.fixture
@@ -85,7 +85,7 @@ class TestDiscovery:
 
     def test_discover_all(self, discovery: Discovery, sample_repo: Path) -> None:
         """Test discovering all items in a repository."""
-        items = discovery.discover_all(sample_repo, "src", ".claude/skills", ".claude/commands")
+        items = discovery.discover_all(sample_repo, None)
 
         # Should find agents, skills, and commands
         agents = [i for i in items if i.item_type == "agent"]
@@ -97,9 +97,8 @@ class TestDiscovery:
         assert len(commands) == 1
 
     def test_discover_agents(self, discovery: Discovery, sample_repo: Path) -> None:
-        """Test discovering agents."""
-        agents_dir = sample_repo / "src"
-        items = discovery._discover_agents(agents_dir)
+        """Test auto-discovering agents."""
+        items = discovery._auto_discover_agents(sample_repo)
 
         names = [i.name for i in items]
         assert "analyst" in names
@@ -114,9 +113,8 @@ class TestDiscovery:
         assert items[0].item_type == "skill"
 
     def test_discover_commands(self, discovery: Discovery, sample_repo: Path) -> None:
-        """Test discovering commands."""
-        commands_dir = sample_repo / ".claude" / "commands"
-        items = discovery._discover_commands(commands_dir)
+        """Test auto-discovering commands."""
+        items = discovery._auto_discover_commands(sample_repo)
 
         assert len(items) == 1
         assert items[0].name == "commit"
@@ -225,3 +223,286 @@ class TestDiscoveredItem:
         assert item.description == ""
         assert item.platforms == []
         assert item.frontmatter == {}
+
+
+@pytest.fixture
+def marketplace_repo(tmp_path: Path) -> Path:
+    """Create a marketplace-enabled repository structure."""
+    # Create .claude-plugin directory with marketplace.json
+    plugin_dir = tmp_path / ".claude-plugin"
+    plugin_dir.mkdir(parents=True)
+    (plugin_dir / "marketplace.json").write_text(
+        """{
+  "name": "test-marketplace",
+  "owner": {
+    "name": "Test Author",
+    "email": "test@example.com"
+  },
+  "metadata": {
+    "description": "Test marketplace",
+    "version": "1.0.0"
+  },
+  "plugins": [
+    {
+      "name": "document-skills",
+      "description": "Document processing skills",
+      "source": "./",
+      "strict": false,
+      "skills": [
+        "./skills/pdf",
+        "./skills/docx"
+      ]
+    }
+  ]
+}"""
+    )
+
+    # Create skills directories
+    pdf_skill = tmp_path / "skills" / "pdf"
+    pdf_skill.mkdir(parents=True)
+    (pdf_skill / "SKILL.md").write_text(
+        """---
+name: pdf
+description: PDF processing toolkit
+license: MIT
+---
+
+# PDF Skill
+
+Process PDF files.
+"""
+    )
+
+    docx_skill = tmp_path / "skills" / "docx"
+    docx_skill.mkdir(parents=True)
+    (docx_skill / "SKILL.md").write_text(
+        """---
+name: docx
+description: Word document processing
+---
+
+# DOCX Skill
+
+Process Word documents.
+"""
+    )
+
+    return tmp_path
+
+
+class TestMarketplaceDiscovery:
+    """Tests for marketplace discovery functionality."""
+
+    def test_is_marketplace_repo_true(self, discovery: Discovery, marketplace_repo: Path) -> None:
+        """Test detecting a marketplace-enabled repository."""
+        assert discovery.is_marketplace_repo(marketplace_repo) is True
+
+    def test_is_marketplace_repo_false(self, discovery: Discovery, sample_repo: Path) -> None:
+        """Test detecting a non-marketplace repository."""
+        assert discovery.is_marketplace_repo(sample_repo) is False
+
+    def test_load_marketplace_manifest(self, discovery: Discovery, marketplace_repo: Path) -> None:
+        """Test loading marketplace manifest."""
+        manifest = discovery.load_marketplace_manifest(marketplace_repo)
+        assert manifest is not None
+        assert manifest.name == "test-marketplace"
+        assert manifest.owner is not None
+        assert manifest.owner.name == "Test Author"
+        assert len(manifest.plugins) == 1
+        assert manifest.plugins[0].name == "document-skills"
+
+    def test_load_marketplace_manifest_not_found(
+        self, discovery: Discovery, sample_repo: Path
+    ) -> None:
+        """Test loading manifest from non-marketplace repo."""
+        manifest = discovery.load_marketplace_manifest(sample_repo)
+        assert manifest is None
+
+    def test_load_marketplace_manifest_invalid_json(
+        self, discovery: Discovery, tmp_path: Path
+    ) -> None:
+        """Test loading invalid JSON manifest."""
+        plugin_dir = tmp_path / ".claude-plugin"
+        plugin_dir.mkdir(parents=True)
+        (plugin_dir / "marketplace.json").write_text("{ invalid json }")
+
+        manifest = discovery.load_marketplace_manifest(tmp_path)
+        assert manifest is None
+
+    def test_discover_from_marketplace(
+        self, discovery: Discovery, marketplace_repo: Path
+    ) -> None:
+        """Test discovering skills from marketplace manifest."""
+        items = discovery.discover_from_marketplace(marketplace_repo)
+
+        assert len(items) == 2
+        names = [i.name for i in items]
+        assert "pdf" in names
+        assert "docx" in names
+
+        # Check plugin name is in frontmatter
+        pdf_item = next(i for i in items if i.name == "pdf")
+        assert pdf_item.frontmatter.get("plugin") == "document-skills"
+
+    def test_discover_from_marketplace_empty(
+        self, discovery: Discovery, sample_repo: Path
+    ) -> None:
+        """Test discover_from_marketplace returns empty for non-marketplace repo."""
+        items = discovery.discover_from_marketplace(sample_repo)
+        assert items == []
+
+    def test_discover_all_marketplace(
+        self, discovery: Discovery, marketplace_repo: Path
+    ) -> None:
+        """Test discover_all uses marketplace discovery when available."""
+        items = discovery.discover_all(marketplace_repo, None)
+
+        # Should only find skills from marketplace (not auto-discover)
+        assert len(items) == 2
+        assert all(i.item_type == "skill" for i in items)
+
+    def test_discover_from_marketplace_missing_skill_dir(
+        self, discovery: Discovery, tmp_path: Path
+    ) -> None:
+        """Test marketplace discovery handles missing skill directories."""
+        plugin_dir = tmp_path / ".claude-plugin"
+        plugin_dir.mkdir(parents=True)
+        (plugin_dir / "marketplace.json").write_text(
+            """{
+  "name": "test",
+  "plugins": [
+    {
+      "name": "missing",
+      "skills": ["./skills/nonexistent"]
+    }
+  ]
+}"""
+        )
+
+        items = discovery.discover_from_marketplace(tmp_path)
+        assert items == []
+
+
+class TestPlatformFiltering:
+    """Tests for platform filtering functionality."""
+
+    def test_filter_by_claude_platform(self, discovery: Discovery, sample_repo: Path) -> None:
+        """Test filtering items by Claude platform."""
+        items = discovery.discover_all(sample_repo, platform="claude")
+
+        # Should only find Claude-compatible items (agents with .md and skills)
+        assert all(
+            "claude" in item.platforms or item.platforms == ["claude"] for item in items
+        )
+
+        # Should include skills (they are Claude-only)
+        skills = [i for i in items if i.item_type == "skill"]
+        assert len(skills) > 0
+
+    def test_filter_by_vscode_platform(self, discovery: Discovery, sample_repo: Path) -> None:
+        """Test filtering items by VS Code platform."""
+        items = discovery.discover_all(sample_repo, platform="vscode")
+
+        # Should only find VS Code-compatible items (agents with .agent.md)
+        for item in items:
+            assert "vscode" in item.platforms or "vscode-insiders" in item.platforms
+
+        # VS Code agents should be present
+        agents = [i for i in items if i.item_type == "agent"]
+        assert len(agents) > 0
+
+    def test_filter_by_copilot_platform(self, discovery: Discovery, sample_repo: Path) -> None:
+        """Test filtering items by Copilot platform."""
+        items = discovery.discover_all(sample_repo, platform="copilot")
+
+        # Should only find Copilot-compatible items (agents with .agent.md)
+        for item in items:
+            assert "copilot" in item.platforms
+
+    def test_filter_by_vscode_insiders(self, discovery: Discovery, sample_repo: Path) -> None:
+        """Test filtering by vscode-insiders treats it as vscode."""
+        vscode_items = discovery.discover_all(sample_repo, platform="vscode")
+        insiders_items = discovery.discover_all(sample_repo, platform="vscode-insiders")
+
+        # Should return the same items
+        assert len(vscode_items) == len(insiders_items)
+        assert {i.name for i in vscode_items} == {i.name for i in insiders_items}
+
+    def test_filter_none_returns_all(
+        self, discovery: Discovery, sample_repo: Path
+    ) -> None:
+        """Test that passing None returns all items."""
+        all_items = discovery.discover_all(sample_repo, None)
+
+        # Should return all types
+        agents = [i for i in all_items if i.item_type == "agent"]
+        skills = [i for i in all_items if i.item_type == "skill"]
+        commands = [i for i in all_items if i.item_type == "command"]
+
+        assert len(agents) >= 1
+        assert len(skills) == 1
+        assert len(commands) == 1
+
+    def test_filter_by_platform_empty_result(
+        self, discovery: Discovery, tmp_path: Path
+    ) -> None:
+        """Test filtering returns empty list when no items match platform."""
+        # Create a repo with only Claude items
+        claude_dir = tmp_path / ".claude" / "skills" / "test"
+        claude_dir.mkdir(parents=True)
+        (claude_dir / "SKILL.md").write_text(
+            """---
+name: test
+description: Test skill
+---
+
+# Test Skill
+"""
+        )
+
+        # Filter for VS Code should return empty
+        items = discovery.discover_all(tmp_path, platform="vscode")
+        assert items == []
+
+    def test_filter_by_platform_helper(self, discovery: Discovery, tmp_path: Path) -> None:
+        """Test the _filter_by_platform helper method directly."""
+        # Create sample items with different platforms
+        items = [
+            DiscoveredItem(
+                name="claude-agent",
+                item_type="agent",
+                path=tmp_path / "claude.md",
+                platforms=["claude"],
+            ),
+            DiscoveredItem(
+                name="vscode-agent",
+                item_type="agent",
+                path=tmp_path / "vscode.agent.md",
+                platforms=["vscode", "copilot"],
+            ),
+            DiscoveredItem(
+                name="no-platform",
+                item_type="agent",
+                path=tmp_path / "none.md",
+                platforms=[],
+            ),
+        ]
+
+        # Filter for Claude
+        claude_items = discovery._filter_by_platform(items, "claude")
+        assert len(claude_items) == 1
+        assert claude_items[0].name == "claude-agent"
+
+        # Filter for VS Code
+        vscode_items = discovery._filter_by_platform(items, "vscode")
+        assert len(vscode_items) == 1
+        assert vscode_items[0].name == "vscode-agent"
+
+        # Filter for Copilot
+        copilot_items = discovery._filter_by_platform(items, "copilot")
+        assert len(copilot_items) == 1
+        assert copilot_items[0].name == "vscode-agent"
+
+        # Items with no platform info are excluded
+        all_filtered = claude_items + vscode_items
+        assert all(item.name != "no-platform" for item in all_filtered)

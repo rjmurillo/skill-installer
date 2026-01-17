@@ -5,8 +5,10 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+from skill_installer.platforms.base import BasePlatform
 
-class ClaudePlatform:
+
+class ClaudePlatform(BasePlatform):
     """Claude Code platform handler."""
 
     name = "claude"
@@ -82,35 +84,9 @@ class ClaudePlatform:
             return self.commands_dir / f"{name}{self.agent_extension}"
         raise ValueError(f"Unknown item type: {item_type}")
 
-    def validate_agent(self, content: str) -> list[str]:
-        """Validate agent content for Claude format.
-
-        Args:
-            content: Agent file content.
-
-        Returns:
-            List of validation errors (empty if valid).
-        """
-        errors = []
-
-        # Check for frontmatter
-        if not content.startswith("---"):
-            errors.append("Agent must have YAML frontmatter")
-            return errors
-
-        # Parse frontmatter
-        try:
-            end_idx = content.index("---", 3)
-            frontmatter = content[3:end_idx].strip()
-        except ValueError:
-            errors.append("Invalid frontmatter: missing closing ---")
-            return errors
-
-        # Check required fields
-        if "name:" not in frontmatter:
-            errors.append("Frontmatter must include 'name' field")
-
-        return errors
+    def get_required_fields(self) -> list[str]:
+        """Claude Code requires 'name' field in frontmatter."""
+        return ["name:"]
 
     def is_available(self) -> bool:
         """Check if Claude Code is available on this system.
@@ -123,3 +99,28 @@ class ClaudePlatform:
             claude_path = Path.home() / "AppData" / "Local" / "Programs" / "claude"
             return claude_path.exists() or self.base_dir.exists()
         return self.base_dir.exists()
+
+    def get_project_install_path(
+        self, project_root: Path, item_type: str, name: str
+    ) -> Path:
+        """Get the project-local installation path for an item.
+
+        Args:
+            project_root: Root directory of the project.
+            item_type: Type of item (agent, skill, command).
+            name: Name of the item.
+
+        Returns:
+            Full path where item should be installed.
+
+        Raises:
+            ValueError: If item type is not supported.
+        """
+        base = project_root / ".claude"
+        if item_type == "agent":
+            return base / "agents" / f"{name}{self.agent_extension}"
+        if item_type == "skill":
+            return base / "skills" / name
+        if item_type == "command":
+            return base / "commands" / f"{name}{self.agent_extension}"
+        raise ValueError(f"Unknown item type: {item_type}")

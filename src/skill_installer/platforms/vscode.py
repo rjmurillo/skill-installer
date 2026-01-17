@@ -5,8 +5,10 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+from skill_installer.platforms.base import BasePlatform
 
-class VSCodePlatform:
+
+class VSCodePlatform(BasePlatform):
     """VS Code platform handler."""
 
     name = "vscode"
@@ -78,35 +80,15 @@ class VSCodePlatform:
             raise ValueError(f"VS Code does not support {item_type}s")
         raise ValueError(f"Unknown item type: {item_type}")
 
-    def validate_agent(self, content: str) -> list[str]:
-        """Validate agent content for VS Code format.
+    def get_required_fields(self) -> list[str]:
+        """VS Code agents have no required frontmatter fields per spec."""
+        return []
 
-        Args:
-            content: Agent file content.
-
-        Returns:
-            List of validation errors (empty if valid).
-        """
-        errors = []
-
-        # Check for frontmatter
-        if not content.startswith("---"):
-            errors.append("Agent must have YAML frontmatter")
-            return errors
-
-        # Parse frontmatter
-        try:
-            end_idx = content.index("---", 3)
-            frontmatter = content[3:end_idx].strip()
-        except ValueError:
-            errors.append("Invalid frontmatter: missing closing ---")
-            return errors
-
-        # Check required fields for VS Code
-        if "tools:" not in frontmatter:
-            errors.append("VS Code agents must include 'tools' field")
-
-        return errors
+    def get_field_error_message(self, field: str) -> str:
+        """Provide VS Code-specific error message."""
+        if field == "tools:":
+            return "VS Code agents must include 'tools' field"
+        return super().get_field_error_message(field)
 
     def is_available(self) -> bool:
         """Check if VS Code is available on this system.
@@ -125,6 +107,34 @@ class VSCodePlatform:
             if self.insiders:
                 program_files = Path("C:/Program Files/Microsoft VS Code Insiders")
             return program_files.exists()
-        # Linux: check if code command exists
+        # Linux: check if code command exists in common locations
         code_cmd = "code-insiders" if self.insiders else "code"
-        return (Path("/usr/bin") / code_cmd).exists()
+        search_paths = [
+            Path("/usr/bin") / code_cmd,
+            Path("/usr/local/bin") / code_cmd,
+            Path("/snap/bin") / code_cmd,
+        ]
+        return any(p.exists() for p in search_paths)
+
+    def get_project_install_path(
+        self, project_root: Path, item_type: str, name: str
+    ) -> Path:
+        """Get the project-local installation path for an item.
+
+        Args:
+            project_root: Root directory of the project.
+            item_type: Type of item (agent only for VS Code).
+            name: Name of the item.
+
+        Returns:
+            Full path where item should be installed.
+
+        Raises:
+            ValueError: If item type is not supported.
+        """
+        base = project_root / ".vscode"
+        if item_type == "agent":
+            return base / "agents" / f"{name}{self.agent_extension}"
+        if item_type in ("skill", "command"):
+            raise ValueError(f"VS Code does not support {item_type}s")
+        raise ValueError(f"Unknown item type: {item_type}")

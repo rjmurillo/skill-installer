@@ -1,4 +1,4 @@
-"""Rich TUI components for interactive installation."""
+"""Legacy TUI class for non-interactive CLI output."""
 
 from __future__ import annotations
 
@@ -13,11 +13,12 @@ if TYPE_CHECKING:
     from skill_installer.discovery import DiscoveredItem
     from skill_installer.registry import InstalledItem, Source
 
+
 console = Console()
 
 
 class TUI:
-    """Text User Interface for skill-installer."""
+    """Text User Interface for skill-installer (non-interactive mode)."""
 
     def __init__(self) -> None:
         """Initialize TUI."""
@@ -174,9 +175,9 @@ class TUI:
                     platforms_installed = installed.get(item_id, [])
 
                     if platforms_installed:
-                        status = f"[green]✓ {', '.join(platforms_installed)}[/green]"
+                        status = f"[green]\u2713 {', '.join(platforms_installed)}[/green]"
                     else:
-                        status = "[dim]○ not installed[/dim]"
+                        status = "[dim]\u25cb not installed[/dim]"
 
                     desc = f" - {item.description}" if item.description else ""
                     self.console.print(f"  {item.name}{desc} {status}")
@@ -213,7 +214,7 @@ class TUI:
         Args:
             message: Success message.
         """
-        self.console.print(f"[green]✓[/green] {message}")
+        self.console.print(f"[green]\u2713[/green] {message}")
 
     def show_error(self, message: str) -> None:
         """Show error message.
@@ -221,7 +222,7 @@ class TUI:
         Args:
             message: Error message.
         """
-        self.console.print(f"[red]✗[/red] {message}")
+        self.console.print(f"[red]\u2717[/red] {message}")
 
     def show_warning(self, message: str) -> None:
         """Show warning message.

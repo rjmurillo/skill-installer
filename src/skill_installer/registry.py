@@ -14,11 +14,62 @@ REGISTRY_DIR = Path.home() / ".skill-installer"
 
 
 class SourcePaths(BaseModel):
-    """Paths within a source repository."""
+    """Paths within a source repository (reserved for future use)."""
 
-    agents: str = "src"
-    skills: str = ".claude/skills"
-    commands: str = ".claude/commands"
+    pass
+
+
+class MarketplaceOwner(BaseModel):
+    """Owner information for a marketplace."""
+
+    name: str
+    email: str = ""
+
+
+class MarketplaceMetadata(BaseModel):
+    """Metadata for a marketplace."""
+
+    description: str = ""
+    version: str = "1.0.0"
+
+
+class MarketplacePlugin(BaseModel):
+    """A plugin within a marketplace."""
+
+    name: str
+    description: str = ""
+    source: str = "./"
+    strict: bool = False
+    skills: list[str] = Field(default_factory=list)
+
+
+class MarketplaceManifest(BaseModel):
+    """Marketplace manifest from .claude-plugin/marketplace.json."""
+
+    name: str
+    owner: MarketplaceOwner | None = None
+    metadata: MarketplaceMetadata = Field(default_factory=MarketplaceMetadata)
+    plugins: list[MarketplacePlugin] = Field(default_factory=list)
+
+    @classmethod
+    def from_file(cls, path: Path) -> MarketplaceManifest:
+        """Load marketplace manifest from a JSON file.
+
+        Args:
+            path: Path to marketplace.json file.
+
+        Returns:
+            Parsed MarketplaceManifest.
+
+        Raises:
+            FileNotFoundError: If file doesn't exist.
+            ValueError: If JSON is invalid.
+        """
+        if not path.exists():
+            raise FileNotFoundError(f"Marketplace manifest not found: {path}")
+
+        data = json.loads(path.read_text())
+        return cls.model_validate(data)
 
 
 class Source(BaseModel):
@@ -32,6 +83,9 @@ class Source(BaseModel):
     paths: SourcePaths = Field(default_factory=SourcePaths)
     platforms: list[str] = Field(default_factory=lambda: ["claude", "vscode"])
     last_sync: datetime | None = Field(default=None, alias="lastSync")
+    marketplace_enabled: bool = Field(default=False, alias="marketplaceEnabled")
+    license: str | None = None
+    auto_update: bool = Field(default=False, alias="autoUpdate")
 
 
 class SourceRegistry(BaseModel):
@@ -75,10 +129,36 @@ class RegistryManager:
 
         Args:
             registry_dir: Directory for registry files. Defaults to ~/.skill-installer.
+
+        Note:
+            Prefer using factory methods `create()` or `create_default()` for construction.
         """
         self.registry_dir = registry_dir or REGISTRY_DIR
         self.sources_file = self.registry_dir / "sources.json"
         self.installed_file = self.registry_dir / "installed.json"
+
+    @classmethod
+    def create(cls, registry_dir: Path) -> "RegistryManager":
+        """Create a registry manager with a custom directory.
+
+        Args:
+            registry_dir: Directory for registry files.
+
+        Returns:
+            Configured RegistryManager instance.
+        """
+        return cls(registry_dir=registry_dir)
+
+    @classmethod
+    def create_default(cls) -> "RegistryManager":
+        """Create a registry manager with the default directory.
+
+        Uses ~/.skill-installer as the registry location.
+
+        Returns:
+            RegistryManager configured with default paths.
+        """
+        return cls()
 
     def ensure_registry_dir(self) -> None:
         """Create registry directory if it doesn't exist."""
@@ -153,10 +233,12 @@ class RegistryManager:
 
         # Derive name from URL if not provided
         if name is None:
-            # Extract repo name from URL (e.g., "ai-agents" from github.com/user/ai-agents)
-            name = url.rstrip("/").split("/")[-1]
-            if name.endswith(".git"):
-                name = name[:-4]
+            # Extract owner/repo from URL (e.g., "anthropics/skills" from github.com/anthropics/skills)
+            parts = url.rstrip("/").rstrip(".git").split("/")
+            if len(parts) >= 2:
+                name = f"{parts[-2]}/{parts[-1]}"
+            else:
+                name = parts[-1]
 
         # Check for duplicates
         for source in registry.sources:
@@ -226,6 +308,57 @@ class RegistryManager:
                 source.last_sync = datetime.now(timezone.utc)
                 self.save_sources(registry)
                 break
+
+    def update_source_license(self, name: str, license_text: str | None) -> None:
+        """Update the license for a source.
+
+        Args:
+            name: Name of the source.
+            license_text: License text to store.
+        """
+        registry = self.load_sources()
+        for source in registry.sources:
+            if source.name == name:
+                source.license = license_text
+                self.save_sources(registry)
+                break
+
+    def toggle_source_auto_update(self, source_name: str) -> bool:
+        """Toggle auto_update flag for a source.
+
+        Args:
+            source_name: Name of the source.
+
+        Returns:
+            New auto_update value.
+        """
+        registry = self.load_sources()
+        for source in registry.sources:
+            if source.name == source_name:
+                source.auto_update = not source.auto_update
+                self.save_sources(registry)
+                return source.auto_update
+        return False
+
+    def get_stale_auto_update_sources(self, max_age_hours: int = 24) -> list[Source]:
+        """Get sources with auto_update enabled that haven't been synced recently.
+
+        Args:
+            max_age_hours: Maximum age in hours before source is considered stale.
+
+        Returns:
+            List of stale sources that need updating.
+        """
+        from datetime import timedelta
+
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=max_age_hours)
+        registry = self.load_sources()
+        stale = []
+        for source in registry.sources:
+            if source.auto_update:
+                if source.last_sync is None or source.last_sync < cutoff:
+                    stale.append(source)
+        return stale
 
     def add_installed(
         self,
