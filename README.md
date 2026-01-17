@@ -37,13 +37,15 @@ Skill Installer provides two interfaces:
 
 ```bash
 # Add a source repository
-skill-installer source add https://github.com/rjmurillo/ai-agents
+skill-installer source add <url>
+skill-installer source add https://github.com/github/awesome-copilot
 
 # Launch interactive TUI
 skill-installer interactive
 
 # Or use CLI commands directly
-skill-installer install ai-agents/analyst --platform claude
+skill-installer install <source>/<type>/<name> --platform <platform>
+skill-installer install awesome-copilot/agent/code-tour --platform copilot
 skill-installer status
 ```
 
@@ -80,9 +82,11 @@ skill-installer interactive
 
 Press `a` from any tab to open the Add Source modal. Supported formats:
 
-- `owner/repo` - Expands to `https://github.com/owner/repo`
-- `git@github.com:owner/repo.git` - SSH URL
-- `https://example.com/marketplace.json` - Direct URL
+| Format | Example |
+|--------|---------|
+| `owner/repo` | `github/awesome-copilot` |
+| SSH URL | `git@github.com:github/awesome-copilot.git` |
+| HTTPS URL | `https://github.com/github/awesome-copilot` |
 
 ## CLI Commands
 
@@ -111,13 +115,16 @@ skill-installer source remove <name>
 skill-installer install
 
 # Install specific item to all configured platforms
-skill-installer install <source>/<item>
+skill-installer install <source>/<type>/<name>
+skill-installer install awesome-copilot/agent/code-tour
 
 # Install to specific platforms
-skill-installer install <source>/<item> --platform claude,vscode
+skill-installer install <source>/<type>/<name> --platform <platforms>
+skill-installer install awesome-copilot/agent/code-tour --platform claude,vscode
 
 # Install to project scope (for team sharing via repository)
-skill-installer install <source>/<item> --scope project
+skill-installer install <source>/<type>/<name> --scope project
+skill-installer install awesome-copilot/agent/code-tour --scope project
 ```
 
 ## Installation Scopes
@@ -134,7 +141,8 @@ Skill Installer supports two installation scopes:
 Installs to your home directory. Available in all projects. Not shared with collaborators.
 
 ```bash
-skill-installer install ai-agents/analyst
+skill-installer install <source>/<type>/<name>
+skill-installer install awesome-copilot/agent/code-tour
 ```
 
 ### Project Scope
@@ -143,7 +151,8 @@ Installs to the current repository. Commit these files to share with collaborato
 
 ```bash
 cd /path/to/your/project
-skill-installer install ai-agents/analyst --scope project
+skill-installer install <source>/<type>/<name> --scope project
+skill-installer install awesome-copilot/agent/code-tour --scope project
 ```
 
 Project scope creates:
