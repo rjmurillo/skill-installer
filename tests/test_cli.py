@@ -309,17 +309,17 @@ class TestHelperFunctions:
         result = cli._parse_platforms(None)
         assert result == ["claude", "vscode"]
 
-    def test_parse_item_id_two_parts(self) -> None:
-        """Test parsing source/name format."""
-        source_name, item_type, item_name = cli._parse_item_id("my-source/my-agent")
-        assert source_name == "my-source"
+    def test_parse_item_id_three_parts(self) -> None:
+        """Test parsing owner/repo/name format."""
+        source_name, item_type, item_name = cli._parse_item_id("owner/repo/my-agent")
+        assert source_name == "owner/repo"
         assert item_type is None
         assert item_name == "my-agent"
 
-    def test_parse_item_id_three_parts(self) -> None:
-        """Test parsing source/type/name format."""
-        source_name, item_type, item_name = cli._parse_item_id("my-source/agent/my-agent")
-        assert source_name == "my-source"
+    def test_parse_item_id_four_parts(self) -> None:
+        """Test parsing owner/repo/type/name format."""
+        source_name, item_type, item_name = cli._parse_item_id("owner/repo/agent/my-agent")
+        assert source_name == "owner/repo"
         assert item_type == "agent"
         assert item_name == "my-agent"
 
@@ -327,6 +327,12 @@ class TestHelperFunctions:
         """Test parsing invalid format raises exit."""
         with pytest.raises(typer.Exit) as exc_info:
             cli._parse_item_id("invalid")
+        assert exc_info.value.exit_code == 1
+
+    def test_parse_item_id_two_parts_invalid(self) -> None:
+        """Test parsing two-part format raises exit (needs owner/repo/name)."""
+        with pytest.raises(typer.Exit) as exc_info:
+            cli._parse_item_id("source/name")
         assert exc_info.value.exit_code == 1
 
 

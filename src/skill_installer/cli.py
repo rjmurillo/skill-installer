@@ -223,7 +223,8 @@ def _parse_item_id(item: str) -> tuple[str, str | None, str]:
     """Parse item ID into components.
 
     Args:
-        item: Item ID in format source/name or source/type/name.
+        item: Item ID in format owner/repo/name or owner/repo/type/name.
+              Source names contain slashes (e.g., rjmurillo/ai-agents).
 
     Returns:
         Tuple of (source_name, item_type, item_name).
@@ -232,12 +233,14 @@ def _parse_item_id(item: str) -> tuple[str, str | None, str]:
         typer.Exit: If format is invalid.
     """
     parts = item.split("/")
-    if len(parts) < 2:
-        tui.show_error("Invalid item format. Use: source/name or source/type/name")
+    if len(parts) < 3:
+        tui.show_error("Invalid item format. Use: owner/repo/name or owner/repo/type/name")
         raise typer.Exit(1)
-    source_name = parts[0]
+    # Source name is always owner/repo (first two parts)
+    source_name = f"{parts[0]}/{parts[1]}"
     item_name = parts[-1]
-    item_type = parts[1] if len(parts) == 3 else None
+    # Type is present if we have 4 parts: owner/repo/type/name
+    item_type = parts[2] if len(parts) == 4 else None
     return source_name, item_type, item_name
 
 
