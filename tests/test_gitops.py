@@ -148,6 +148,80 @@ class TestGitOps:
         with pytest.raises(GitOpsError, match="Git operation failed"):
             temp_gitops.clone_or_fetch("https://github.com/test/repo", "test", "main")
 
+    @patch("skill_installer.gitops.Repo")
+    def test_clone_fallback_main_to_master(
+        self, mock_repo: MagicMock, temp_gitops: GitOps
+    ) -> None:
+        """Test fallback from main to master when main fails."""
+        from git.exc import GitCommandError
+
+        temp_gitops.ensure_cache_dir()
+
+        def clone_side_effect(url: str, path: Path, branch: str, depth: int) -> MagicMock:
+            if branch == "main":
+                raise GitCommandError("clone", "branch not found")
+            return MagicMock()
+
+        mock_repo.clone_from.side_effect = clone_side_effect
+
+        result = temp_gitops.clone_or_fetch("https://github.com/test/repo", "test", "main")
+
+        assert result == temp_gitops.get_repo_path("test")
+        assert mock_repo.clone_from.call_count == 2
+
+    @patch("skill_installer.gitops.Repo")
+    def test_clone_explicit_ref_no_fallback(
+        self, mock_repo: MagicMock, temp_gitops: GitOps
+    ) -> None:
+        """Test that explicit non-default refs don't trigger fallback."""
+        from git.exc import GitCommandError
+
+        temp_gitops.ensure_cache_dir()
+        mock_repo.clone_from.side_effect = GitCommandError("clone", "branch not found")
+
+        with pytest.raises(GitOpsError):
+            temp_gitops.clone_or_fetch("https://github.com/test/repo", "test", "feature-branch")
+
+        # Should only try the explicit ref, not fall back
+        assert mock_repo.clone_from.call_count == 1
+
+    def test_extract_github_owner_repo_https(self, temp_gitops: GitOps) -> None:
+        """Test extracting owner/repo from HTTPS URL."""
+        result = temp_gitops._extract_github_owner_repo(
+            "https://github.com/owner/repo.git"
+        )
+        assert result == ("owner", "repo")
+
+    def test_extract_github_owner_repo_ssh(self, temp_gitops: GitOps) -> None:
+        """Test extracting owner/repo from SSH URL."""
+        result = temp_gitops._extract_github_owner_repo("git@github.com:owner/repo.git")
+        assert result == ("owner", "repo")
+
+    def test_extract_github_owner_repo_no_git_suffix(self, temp_gitops: GitOps) -> None:
+        """Test extracting owner/repo from URL without .git suffix."""
+        result = temp_gitops._extract_github_owner_repo("https://github.com/owner/repo")
+        assert result == ("owner", "repo")
+
+    def test_extract_github_owner_repo_non_github(self, temp_gitops: GitOps) -> None:
+        """Test non-GitHub URL returns None."""
+        result = temp_gitops._extract_github_owner_repo("https://gitlab.com/owner/repo")
+        assert result is None
+
+    def test_get_branches_to_try_main(self, temp_gitops: GitOps) -> None:
+        """Test branches to try when ref is main."""
+        result = temp_gitops._get_branches_to_try("main")
+        assert result == ["main", "master"]
+
+    def test_get_branches_to_try_master(self, temp_gitops: GitOps) -> None:
+        """Test branches to try when ref is master."""
+        result = temp_gitops._get_branches_to_try("master")
+        assert result == ["main", "master"]
+
+    def test_get_branches_to_try_custom(self, temp_gitops: GitOps) -> None:
+        """Test branches to try with custom ref."""
+        result = temp_gitops._get_branches_to_try("feature-branch")
+        assert result == ["feature-branch"]
+
     def test_get_license_not_cached(self, temp_gitops: GitOps) -> None:
         """Test getting license from non-existent repo."""
         license_text = temp_gitops.get_license("nonexistent")
