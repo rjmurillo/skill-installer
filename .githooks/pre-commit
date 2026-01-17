@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# Pre-commit hook that delegates to pre-commit framework
+# This file is tracked in .githooks/ and shared across the team
+
+set -e
+
+# Check if pre-commit is available
+if command -v pre-commit > /dev/null; then
+    exec pre-commit run --config=.pre-commit-config.yaml "$@"
+elif [ -x ".venv/bin/pre-commit" ]; then
+    exec .venv/bin/pre-commit run --config=.pre-commit-config.yaml "$@"
+else
+    echo "Warning: pre-commit not found. Run 'uv sync --extra dev' to install." >&2
+    exit 0
+fi

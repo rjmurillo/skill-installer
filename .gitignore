@@ -48,6 +48,8 @@ worktree--/
 .codeql/db/
 .codeql/results/
 .codeql/logs/
+.codeql-db/
+.codeql-results/
 
 # Python
 __pycache__/

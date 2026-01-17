@@ -200,11 +200,35 @@ cd skill-installer
 # Install with uv
 uv sync --extra dev
 
+# Set up git hooks (Bandit pre-commit, CodeQL pre-push)
+git config core.hooksPath .githooks
+
 # Run tests
 uv run pytest
 
 # Run the CLI
 uv run skill-installer --help
+```
+
+### Security Scanning
+
+This project uses layered security scanning:
+
+| Layer | Tool | Trigger | Severity |
+|-------|------|---------|----------|
+| Pre-commit | Bandit | Every commit | High only |
+| Pre-push | CodeQL | Before push | All warnings/errors |
+| CI | Bandit, CodeQL, DevSkim | PR/push to main | All |
+
+To run scans manually:
+
+```bash
+# Bandit (fast Python SAST)
+bandit -c pyproject.toml -r src/
+
+# CodeQL (comprehensive security)
+gh codeql database create .codeql-db --language=python
+gh codeql database analyze .codeql-db codeql/python-queries:codeql-suites/python-security-extended.qls
 ```
 
 ## License

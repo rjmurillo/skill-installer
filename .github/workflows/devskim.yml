@@ -1,0 +1,33 @@
+# DevSkim is a security linter that detects security issues in code.
+# Results appear under the Security tab of the repository.
+
+name: DevSkim
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+  schedule:
+    - cron: "30 9 * * 5"
+
+permissions:
+  actions: read
+  contents: read
+  security-events: write
+
+jobs:
+  lint:
+    name: DevSkim
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Run DevSkim scanner
+        uses: microsoft/DevSkim-Action@4b5047945a44163b94642a1cecc0d93a3f428cc6 # v1
+
+      - name: Upload DevSkim scan results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@ce28f5bb42b7a9f2c824e633a3f6ee835bab6858 # v3.28.0
+        with:
+          sarif_file: devskim-results.sarif
