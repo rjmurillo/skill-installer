@@ -27,79 +27,86 @@ class DiscoveredItem:
 class Discovery:
     """Discovers content in source repositories."""
 
-    # File patterns for different item types
-    AGENT_PATTERNS = ["*.md", "*.agent.md"]
     SKILL_PATTERN = "SKILL.md"
+    # Directories to skip during auto-discovery
+    SKIP_DIRS = {".git", "node_modules", "__pycache__", ".venv", "venv", ".tox", "dist", "build"}
+    # Files to skip (common non-agent markdown files)
+    SKIP_FILES = {"README.md", "CHANGELOG.md", "CONTRIBUTING.md", "LICENSE.md", "SECURITY.md"}
 
     def __init__(self) -> None:
         """Initialize discovery."""
         pass
 
-    def discover_all(
-        self,
-        repo_path: Path,
-        agents_path: str = "src",
-        skills_path: str = ".claude/skills",
-        commands_path: str = ".claude/commands",
-    ) -> list[DiscoveredItem]:
+    def discover_all(self, repo_path: Path) -> list[DiscoveredItem]:
         """Discover all items in a repository.
+
+        Auto-discovers:
+        - Agents: *.agent.md files, or *.md files with frontmatter containing 'name'
+        - Skills: Directories containing SKILL.md
+        - Commands: *.md files in .claude/commands/ directories with frontmatter
 
         Args:
             repo_path: Path to the repository root.
-            agents_path: Relative path to agents directory.
-            skills_path: Relative path to skills directory.
-            commands_path: Relative path to commands directory.
 
         Returns:
             List of discovered items.
         """
         items: list[DiscoveredItem] = []
 
-        # Discover agents
-        agents_dir = repo_path / agents_path
-        if agents_dir.exists():
-            items.extend(self._discover_agents(agents_dir))
+        # Auto-discover agents
+        items.extend(self._auto_discover_agents(repo_path))
 
-        # Discover skills
-        skills_dir = repo_path / skills_path
-        if skills_dir.exists():
-            items.extend(self._discover_skills(skills_dir))
+        # Auto-discover skills
+        items.extend(self._auto_discover_skills(repo_path))
 
-        # Discover commands
-        commands_dir = repo_path / commands_path
-        if commands_dir.exists():
-            items.extend(self._discover_commands(commands_dir))
+        # Auto-discover commands
+        items.extend(self._auto_discover_commands(repo_path))
 
         return items
 
-    def _discover_agents(self, agents_dir: Path) -> list[DiscoveredItem]:
-        """Discover agents in a directory.
+    def _auto_discover_agents(self, repo_path: Path) -> list[DiscoveredItem]:
+        """Auto-discover agents by searching for agent files.
+
+        Discovers:
+        - *.agent.md files anywhere (VS Code/Copilot agents)
+        - *.md files with valid frontmatter (name field required)
 
         Args:
-            agents_dir: Path to agents directory.
+            repo_path: Path to the repository root.
 
         Returns:
             List of discovered agents.
         """
         items = []
+        seen_paths: set[Path] = set()
 
-        # Look for markdown files
-        for pattern in self.AGENT_PATTERNS:
-            for path in agents_dir.glob(pattern):
-                if path.is_file():
-                    item = self._parse_agent_file(path, "agent")
-                    if item:
-                        items.append(item)
+        # 1. Find all .agent.md files (unambiguous agent marker)
+        for agent_file in repo_path.glob("**/*.agent.md"):
+            if any(skip_dir in agent_file.parts for skip_dir in self.SKIP_DIRS):
+                continue
+            if agent_file not in seen_paths:
+                item = self._parse_agent_file(agent_file, "agent")
+                if item:
+                    items.append(item)
+                    seen_paths.add(agent_file)
 
-        # Also check subdirectories (e.g., claude/, vs-code-agents/)
-        for subdir in agents_dir.iterdir():
-            if subdir.is_dir():
-                for pattern in self.AGENT_PATTERNS:
-                    for path in subdir.glob(pattern):
-                        if path.is_file():
-                            item = self._parse_agent_file(path, "agent")
-                            if item:
-                                items.append(item)
+        # 2. Find .md files with valid agent frontmatter (must have 'name' field)
+        for md_file in repo_path.glob("**/*.md"):
+            if any(skip_dir in md_file.parts for skip_dir in self.SKIP_DIRS):
+                continue
+            if md_file.name in self.SKIP_FILES:
+                continue
+            if md_file.name.endswith(".agent.md"):
+                continue  # Already handled above
+            if md_file.name == self.SKILL_PATTERN:
+                continue  # Skills are handled separately
+            if md_file in seen_paths:
+                continue
+
+            item = self._parse_agent_file(md_file, "agent", require_frontmatter=True)
+            if item:
+                items.append(item)
+                seen_paths.add(md_file)
 
         return items
 
@@ -125,39 +132,83 @@ class Discovery:
 
         return items
 
-    def _discover_commands(self, commands_dir: Path) -> list[DiscoveredItem]:
-        """Discover commands in a directory.
+    def _auto_discover_skills(self, repo_path: Path) -> list[DiscoveredItem]:
+        """Auto-discover skills by searching for SKILL.md files recursively.
 
         Args:
-            commands_dir: Path to commands directory.
+            repo_path: Path to the repository root.
+
+        Returns:
+            List of discovered skills.
+        """
+        items = []
+
+        for skill_file in repo_path.glob("**/SKILL.md"):
+            # Skip if in a directory we should ignore
+            if any(skip_dir in skill_file.parts for skip_dir in self.SKIP_DIRS):
+                continue
+
+            # The skill directory is the parent of SKILL.md
+            skill_path = skill_file.parent
+
+            # Skip if it's the repo root itself (SKILL.md shouldn't be at root)
+            if skill_path == repo_path:
+                continue
+
+            item = self._parse_skill_dir(skill_path)
+            if item:
+                items.append(item)
+
+        return items
+
+    def _auto_discover_commands(self, repo_path: Path) -> list[DiscoveredItem]:
+        """Auto-discover commands by searching for .claude/commands/ directories.
+
+        Args:
+            repo_path: Path to the repository root.
 
         Returns:
             List of discovered commands.
         """
         items = []
 
-        for pattern in self.AGENT_PATTERNS:
-            for path in commands_dir.glob(pattern):
-                if path.is_file():
-                    item = self._parse_agent_file(path, "command")
+        # Search for commands directories (typically .claude/commands/)
+        for commands_dir in repo_path.glob("**/.claude/commands"):
+            if not commands_dir.is_dir():
+                continue
+            if any(skip_dir in commands_dir.parts for skip_dir in self.SKIP_DIRS):
+                continue
+
+            # Commands are .md files with frontmatter
+            for path in commands_dir.glob("*.md"):
+                if path.is_file() and path.name not in self.SKIP_FILES:
+                    item = self._parse_agent_file(path, "command", require_frontmatter=True)
                     if item:
                         items.append(item)
 
         return items
 
-    def _parse_agent_file(self, path: Path, item_type: str) -> DiscoveredItem | None:
+    def _parse_agent_file(
+        self, path: Path, item_type: str, require_frontmatter: bool = False
+    ) -> DiscoveredItem | None:
         """Parse an agent/command file.
 
         Args:
             path: Path to the file.
             item_type: Type of item (agent, command).
+            require_frontmatter: If True, only return item if frontmatter has 'name' field.
 
         Returns:
-            DiscoveredItem or None if parsing fails.
+            DiscoveredItem or None if parsing fails or validation fails.
         """
         try:
             content = path.read_text()
             frontmatter = self._parse_frontmatter(content)
+
+            # If frontmatter is required, must have 'name' field
+            if require_frontmatter:
+                if not frontmatter or "name" not in frontmatter:
+                    return None
 
             # Derive name from frontmatter or filename
             name = frontmatter.get("name", path.stem)

@@ -14,11 +14,9 @@ REGISTRY_DIR = Path.home() / ".skill-installer"
 
 
 class SourcePaths(BaseModel):
-    """Paths within a source repository."""
+    """Paths within a source repository (reserved for future use)."""
 
-    agents: str = "src"
-    skills: str = ".claude/skills"
-    commands: str = ".claude/commands"
+    pass
 
 
 class Source(BaseModel):
