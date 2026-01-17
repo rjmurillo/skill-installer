@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Annotated
 
 import typer
@@ -14,7 +13,7 @@ from skill_installer.discovery import Discovery
 from skill_installer.gitops import GitOps, GitOpsError
 from skill_installer.install import Installer
 from skill_installer.registry import RegistryManager
-from skill_installer.tui import TUI
+from skill_installer.tui import TUI, SkillInstallerApp
 
 app = typer.Typer(
     name="skill-installer",
@@ -211,12 +210,7 @@ def install(
             gitops.clone_or_fetch(source.url, source_name, source.ref)
 
     # Discover items
-    items = discovery.discover_all(
-        repo_path,
-        source.paths.agents,
-        source.paths.skills,
-        source.paths.commands,
-    )
+    items = discovery.discover_all(repo_path)
 
     # Find matching item
     item_name = parts[-1]
@@ -273,12 +267,7 @@ def _interactive_install(
             gitops.clone_or_fetch(source.url, source.name, source.ref)
 
     # Discover items
-    items = discovery.discover_all(
-        repo_path,
-        source.paths.agents,
-        source.paths.skills,
-        source.paths.commands,
-    )
+    items = discovery.discover_all(repo_path)
 
     # Get installed items
     installed_items = registry.list_installed(source=source.name)
@@ -370,12 +359,7 @@ def sync() -> None:
             continue
 
         repo_path = gitops.get_repo_path(source.name)
-        items = discovery.discover_all(
-            repo_path,
-            source.paths.agents,
-            source.paths.skills,
-            source.paths.commands,
-        )
+        items = discovery.discover_all(repo_path)
 
         # Find matching item
         matches = [i for i in items if i.name == item.name and i.item_type == item.item_type]
@@ -441,49 +425,13 @@ def interactive() -> None:
     discovery = Discovery()
     installer = Installer(registry, gitops)
 
-    tui.show_welcome()
-
-    while True:
-        choice = tui.show_main_menu()
-
-        if choice == "q":
-            break
-        elif choice == "1":  # Add Source
-            url = tui.prompt_source_url()
-            if url:
-                name = tui.prompt_source_name(url.rstrip("/").split("/")[-1])
-                ref = tui.prompt_source_ref()
-                platforms = tui.prompt_platforms()
-
-                try:
-                    source = registry.add_source(url, name, ref, platforms)
-                    tui.show_success(f"Added source '{source.name}'")
-
-                    with Progress(
-                        SpinnerColumn(),
-                        TextColumn("[progress.description]{task.description}"),
-                        console=console,
-                    ) as progress:
-                        progress.add_task(f"Cloning {source.name}...", total=None)
-                        gitops.clone_or_fetch(source.url, source.name, source.ref)
-
-                    registry.update_source_sync_time(source.name)
-                    tui.show_success(f"Synced '{source.name}'")
-                except (ValueError, GitOpsError) as e:
-                    tui.show_error(str(e))
-
-        elif choice == "2":  # Browse & Install
-            _interactive_install(registry, gitops, discovery, installer, None)
-
-        elif choice == "3":  # Status
-            tui.show_sources(registry.list_sources())
-            tui.show_installed(registry.list_installed())
-
-        elif choice == "4":  # Sync All
-            sync()
-
-        elif choice == "5":  # Settings
-            config_show()
+    tui_app = SkillInstallerApp(
+        registry_manager=registry,
+        gitops=gitops,
+        discovery=discovery,
+        installer=installer,
+    )
+    tui_app.run()
 
 
 if __name__ == "__main__":
