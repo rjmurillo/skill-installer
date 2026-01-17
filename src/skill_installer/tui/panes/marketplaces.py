@@ -25,7 +25,7 @@ class MarketplacesPane(Container):
     """
 
     def compose(self) -> ComposeResult:
-        yield Static("Configured source repositories:", id="marketplaces-header")
+        yield Static("Manage repositories:", id="marketplaces-header")
         yield SourceListView(id="marketplaces-list")
 
     def set_sources(self, sources: list[DisplaySource]) -> None:

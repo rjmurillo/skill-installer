@@ -10,6 +10,7 @@ from skill_installer.tui.console import TUI, console
 from skill_installer.tui.models import DisplayItem, DisplaySource
 from skill_installer.tui.panes import DiscoverPane, InstalledPane, MarketplacesPane
 from skill_installer.tui.screens import (
+    AddSourceScreen,
     ConfirmationScreen,
     ItemDetailScreen,
     LocationSelectionScreen,
@@ -43,6 +44,7 @@ __all__ = [
     "InstalledPane",
     "MarketplacesPane",
     # Screens
+    "AddSourceScreen",
     "ConfirmationScreen",
     "ItemDetailScreen",
     "LocationSelectionScreen",

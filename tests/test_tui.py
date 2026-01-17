@@ -11,6 +11,7 @@ from textual.containers import Container
 
 from skill_installer.discovery import DiscoveredItem
 from skill_installer.tui import (
+    AddSourceScreen,
     ConfirmationScreen,
     DisplayItem,
     DisplaySource,
@@ -395,6 +396,236 @@ class TestConfirmationScreen:
 
             assert app.result is False
             assert not isinstance(app.screen, ConfirmationScreen)
+
+
+class _AddSourceTestApp(App):
+    """Test app for AddSourceScreen tests."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.result: str | None = None
+        self.dismissed = False
+
+    def compose(self) -> ComposeResult:
+        yield Container()
+
+    async def on_mount(self) -> None:
+        await self.push_screen(AddSourceScreen(), self._handle_result)
+
+    def _handle_result(self, result: str | None) -> None:
+        self.result = result
+        self.dismissed = True
+
+
+class TestAddSourceScreen:
+    """Tests for AddSourceScreen modal."""
+
+    @pytest.mark.asyncio
+    async def test_escape_cancels(self) -> None:
+        """Test escape key cancels and returns None."""
+        app = _AddSourceTestApp()
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            await pilot.pause()
+
+            screen = app.screen
+            assert isinstance(screen, AddSourceScreen)
+
+            await pilot.press("escape")
+            await pilot.pause()
+
+            assert app.dismissed is True
+            assert app.result is None
+            assert not isinstance(app.screen, AddSourceScreen)
+
+    @pytest.mark.asyncio
+    async def test_submit_empty_shows_error(self) -> None:
+        """Test submitting empty input shows error message."""
+        app = _AddSourceTestApp()
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            await pilot.pause()
+
+            screen = app.screen
+            assert isinstance(screen, AddSourceScreen)
+
+            await pilot.press("enter")
+            await pilot.pause()
+
+            # Screen should still be visible (not dismissed)
+            assert isinstance(app.screen, AddSourceScreen)
+            assert app.dismissed is False
+
+    @pytest.mark.asyncio
+    async def test_shorthand_expands_to_github_url(self) -> None:
+        """Test owner/repo shorthand expands to GitHub URL."""
+        app = _AddSourceTestApp()
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            await pilot.pause()
+
+            screen = app.screen
+            assert isinstance(screen, AddSourceScreen)
+
+            # Type owner/repo format
+            await pilot.press("r", "j", "m", "u", "r", "i", "l", "l", "o")
+            await pilot.press("/")
+            await pilot.press("s", "k", "i", "l", "l", "s")
+            await pilot.pause()
+
+            # Submit
+            await pilot.press("enter")
+            await pilot.pause()
+
+            assert app.dismissed is True
+            assert app.result == "https://github.com/rjmurillo/skills"
+
+    @pytest.mark.asyncio
+    async def test_https_url_passes_through(self) -> None:
+        """Test HTTPS URL passes through unchanged."""
+        app = _AddSourceTestApp()
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            await pilot.pause()
+
+            screen = app.screen
+            assert isinstance(screen, AddSourceScreen)
+
+            # Type full HTTPS URL
+            url = "https://example.com/marketplace.json"
+            for char in url:
+                await pilot.press(char)
+            await pilot.pause()
+
+            await pilot.press("enter")
+            await pilot.pause()
+
+            assert app.dismissed is True
+            assert app.result == url
+
+    @pytest.mark.asyncio
+    async def test_ssh_url_passes_through(self) -> None:
+        """Test SSH URL passes through unchanged."""
+        app = _AddSourceTestApp()
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            await pilot.pause()
+
+            screen = app.screen
+            assert isinstance(screen, AddSourceScreen)
+
+            # Type SSH URL
+            url = "git@github.com:owner/repo.git"
+            for char in url:
+                await pilot.press(char)
+            await pilot.pause()
+
+            await pilot.press("enter")
+            await pilot.pause()
+
+            assert app.dismissed is True
+            assert app.result == url
+
+    @pytest.mark.asyncio
+    async def test_invalid_url_shows_error(self) -> None:
+        """Test invalid URL format shows error and does not dismiss."""
+        app = _AddSourceTestApp()
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            await pilot.pause()
+
+            screen = app.screen
+            assert isinstance(screen, AddSourceScreen)
+
+            # Type something that is not a valid URL format
+            for char in "notavalidurl":
+                await pilot.press(char)
+            await pilot.pause()
+
+            await pilot.press("enter")
+            await pilot.pause()
+
+            # Screen should still be visible
+            assert isinstance(app.screen, AddSourceScreen)
+            assert app.dismissed is False
+
+
+class TestAddSourceScreenExpansion:
+    """Tests for AddSourceScreen URL expansion logic."""
+
+    def test_expand_shorthand(self) -> None:
+        """Test shorthand expansion to GitHub URL."""
+        screen = AddSourceScreen()
+        result = screen._expand_url("owner/repo")
+        assert result == "https://github.com/owner/repo"
+
+    def test_expand_with_hyphens(self) -> None:
+        """Test shorthand with hyphens expands correctly."""
+        screen = AddSourceScreen()
+        result = screen._expand_url("my-org/my-repo")
+        assert result == "https://github.com/my-org/my-repo"
+
+    def test_expand_with_dots(self) -> None:
+        """Test shorthand with dots expands correctly."""
+        screen = AddSourceScreen()
+        result = screen._expand_url("org.name/repo.name")
+        assert result == "https://github.com/org.name/repo.name"
+
+    def test_https_url_unchanged(self) -> None:
+        """Test HTTPS URL passes through unchanged."""
+        screen = AddSourceScreen()
+        url = "https://github.com/owner/repo"
+        result = screen._expand_url(url)
+        assert result == url
+
+    def test_ssh_url_unchanged(self) -> None:
+        """Test SSH URL passes through unchanged."""
+        screen = AddSourceScreen()
+        url = "git@github.com:owner/repo.git"
+        result = screen._expand_url(url)
+        assert result == url
+
+
+class TestAddSourceScreenValidation:
+    """Tests for AddSourceScreen URL validation logic."""
+
+    def test_validate_empty_fails(self) -> None:
+        """Test empty input fails validation."""
+        screen = AddSourceScreen()
+        error = screen._validate_url("")
+        assert error is not None
+        assert "enter" in error.lower()
+
+    def test_validate_https_url_passes(self) -> None:
+        """Test HTTPS URL passes validation."""
+        screen = AddSourceScreen()
+        error = screen._validate_url("https://example.com/repo")
+        assert error is None
+
+    def test_validate_http_url_passes(self) -> None:
+        """Test HTTP URL passes validation."""
+        screen = AddSourceScreen()
+        error = screen._validate_url("http://example.com/repo")
+        assert error is None
+
+    def test_validate_ssh_url_passes(self) -> None:
+        """Test SSH URL passes validation."""
+        screen = AddSourceScreen()
+        error = screen._validate_url("git@github.com:owner/repo.git")
+        assert error is None
+
+    def test_validate_shorthand_passes(self) -> None:
+        """Test owner/repo shorthand passes validation."""
+        screen = AddSourceScreen()
+        error = screen._validate_url("owner/repo")
+        assert error is None
+
+    def test_validate_invalid_fails(self) -> None:
+        """Test invalid format fails validation."""
+        screen = AddSourceScreen()
+        error = screen._validate_url("not-a-valid-url")
+        assert error is not None
+        assert "invalid" in error.lower()
 
 
 class TestOpenUrl:

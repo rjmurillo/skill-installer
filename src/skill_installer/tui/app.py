@@ -17,6 +17,7 @@ from skill_installer.tui.operations import ItemOperations
 from skill_installer.tui.panes.discover import DiscoverPane
 from skill_installer.tui.panes.installed import InstalledPane
 from skill_installer.tui.panes.marketplaces import MarketplacesPane
+from skill_installer.tui.screens.add_source import AddSourceScreen
 from skill_installer.tui.screens.installed_item_detail import InstalledItemDetailScreen
 from skill_installer.tui.screens.item_detail import ItemDetailScreen
 from skill_installer.tui.screens.source_detail import SourceDetailScreen
@@ -181,7 +182,37 @@ class SkillInstallerApp(App):
 
     def action_add_source(self) -> None:
         """Show add source dialog."""
-        self.notify("Add source: Run 'skill-installer source add <url>' from CLI")
+        self.push_screen(AddSourceScreen(), self._handle_add_source_result)
+
+    def _handle_add_source_result(self, url: str | None) -> None:
+        """Handle the result from AddSourceScreen.
+
+        Args:
+            url: The URL to add, or None if cancelled.
+        """
+        if url is None:
+            return
+
+        if not self.registry_manager:
+            self.notify("Registry not configured", severity="error")
+            return
+
+        try:
+            source = self.registry_manager.add_source(url)
+            self.notify(f"Added source: {source.name}")
+
+            # Sync the new source if gitops is available
+            if self.gitops:
+                self._update_status(f"Syncing {source.name}...")
+                try:
+                    self.gitops.clone_or_fetch(source.url, source.name)
+                    self.registry_manager.update_source_sync_time(source.name)
+                except Exception as e:
+                    self.notify(f"Failed to sync: {e}", severity="warning")
+
+            self._load_data()
+        except ValueError as e:
+            self.notify(str(e), severity="error")
 
     def action_install(self) -> None:
         """Install checked items, or selected item if none checked."""
