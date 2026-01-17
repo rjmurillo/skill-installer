@@ -135,8 +135,10 @@ class AddSourceScreen(ModalScreen[str | None]):
             return "Please enter a repository URL"
 
         # Check for common patterns
-        if value.startswith("https://") or value.startswith("http://"):
+        if value.startswith("https://"):
             return None
+        if value.startswith("http://"):
+            return "Insecure URL. Use https://"
         if value.startswith("git@") and ":" in value:
             return None
         if self.SHORTHAND_PATTERN.match(value):

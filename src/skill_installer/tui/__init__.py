@@ -17,9 +17,9 @@ from skill_installer.tui.screens import (
     SourceDetailScreen,
 )
 from skill_installer.tui.widgets import (
+    ItemDataTable,
     ItemDetailOption,
     ItemListView,
-    ItemRow,
     LocationOption,
     ScrollIndicator,
     SearchInput,
@@ -50,9 +50,9 @@ __all__ = [
     "LocationSelectionScreen",
     "SourceDetailScreen",
     # Widgets
+    "ItemDataTable",
     "ItemDetailOption",
     "ItemListView",
-    "ItemRow",
     "LocationOption",
     "ScrollIndicator",
     "SearchInput",

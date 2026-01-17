@@ -31,29 +31,29 @@ class BasePlatform(ABC):
     @abstractmethod
     def base_dir(self) -> Path:
         """Get the base directory for this platform."""
-        ...
+        raise NotImplementedError
 
     @abstractmethod
     def ensure_dirs(self) -> None:
         """Create platform directories if they don't exist."""
-        ...
+        raise NotImplementedError
 
     @abstractmethod
     def get_install_path(self, item_type: str, name: str) -> Path:
         """Get the installation path for an item."""
-        ...
+        raise NotImplementedError
 
     @abstractmethod
     def is_available(self) -> bool:
         """Check if this platform is available on the current system."""
-        ...
+        raise NotImplementedError
 
     @abstractmethod
     def get_project_install_path(
         self, project_root: Path, item_type: str, name: str
     ) -> Path:
         """Get the project-local installation path for an item."""
-        ...
+        raise NotImplementedError
 
     def get_required_fields(self) -> list[str]:
         """Get the required frontmatter fields for this platform.

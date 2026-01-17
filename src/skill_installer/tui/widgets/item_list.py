@@ -1,115 +1,57 @@
-"""Item list widget with keyboard navigation."""
+"""Item list widget with keyboard navigation using DataTable virtualization."""
 
 from __future__ import annotations
 
+from pathlib import PurePosixPath
 from typing import Any
 
-from textual.app import ComposeResult
+from textual import on
 from textual.binding import Binding
-from textual.containers import Horizontal, Vertical, VerticalScroll
+from textual.coordinate import Coordinate
 from textual.message import Message
-from textual.reactive import reactive
-from textual.widget import Widget
-from textual.widgets import Static
+from textual.widgets import DataTable
 
-from skill_installer.tui._utils import sanitize_css_id
+from skill_installer.tui._utils import get_terminal_indicators, sanitize_terminal_text
 from skill_installer.tui.models import DisplayItem
 
 
-class ItemRow(Widget):
-    """A single item row in the list."""
+class ItemDataTable(DataTable):
+    """Virtualized item list using DataTable.
 
-    DEFAULT_CSS = """
-    ItemRow {
-        height: 3;
-        padding: 0 2;
-    }
-    ItemRow.selected {
-        background: $accent;
-    }
-    ItemRow.checked .item-indicator {
-        color: $success;
-    }
-    ItemRow .item-header {
-        color: $secondary;
-    }
-    ItemRow .item-description {
-        color: $text-muted;
-    }
-    ItemRow .item-indicator {
-        width: 3;
-        color: $text-muted;
-    }
+    This replaces the old ItemListView/ItemRow implementation with a
+    DataTable-based approach for dramatically improved performance through
+    virtualization (rendering only visible rows instead of all items).
     """
 
-    selected = reactive(False)
-    checked = reactive(False)
-
-    def __init__(self, item: DisplayItem, **kwargs: Any) -> None:
-        super().__init__(**kwargs)
-        self.item = item
-        self._indicator: Static | None = None
-
-    def compose(self) -> ComposeResult:
-        installed = bool(self.item.installed_platforms)
-        indicator = "\u25cf" if installed else "\u25cb"
-        status = f"[{', '.join(self.item.installed_platforms)}]" if installed else ""
-
-        # First line: name * source_name [status]
-        first_line_parts = [self.item.name, " * ", self.item.source_name]
-        if status:
-            first_line_parts.append(f" {status}")
-        first_line = "".join(first_line_parts)
-
-        # Second line: [relative_path] description (truncated if needed)
-        # Show parent directory path for disambiguation when available
-        description = self.item.description or "No description"
-        path_prefix = ""
-        if self.item.relative_path:
-            # Extract parent directory from relative path for disambiguation
-            from pathlib import PurePosixPath
-            parent = str(PurePosixPath(self.item.relative_path).parent)
-            if parent and parent != ".":
-                path_prefix = f"[{parent}] "
-
-        max_desc_length = 80 - len(path_prefix)
-        if len(description) > max_desc_length:
-            description = description[:max_desc_length - 3] + "..."
-        second_line = path_prefix + description
-
-        with Horizontal():
-            self._indicator = Static(indicator, classes="item-indicator")
-            yield self._indicator
-            with Vertical():
-                yield Static(first_line, classes="item-header")
-                yield Static(second_line, classes="item-description")
-
-    def watch_selected(self, selected: bool) -> None:
-        self.set_class(selected, "selected")
-
-    def watch_checked(self, checked: bool) -> None:
-        self.set_class(checked, "checked")
-        if self._indicator:
-            # Update indicator: ◉ for checked, ● for installed unchecked, ○ for not installed unchecked
-            installed = bool(self.item.installed_platforms)
-            if checked:
-                self._indicator.update("\u25c9")  # ◉ (checked)
-            elif installed:
-                self._indicator.update("\u25cf")  # ● (installed)
-            else:
-                self._indicator.update("\u25cb")  # ○ (not installed)
-
-
-class ItemListView(VerticalScroll):
-    """Scrollable list of items with keyboard navigation."""
+    # Column width limits for terminal display
+    MAX_NAME_LENGTH = 50
+    MAX_SOURCE_LENGTH = 30
+    MAX_PLATFORM_LENGTH = 20
+    MAX_DESCRIPTION_LENGTH = 60
+    MAX_PATH_PREFIX_LENGTH = 30
 
     DEFAULT_CSS = """
-    ItemListView {
+    ItemDataTable {
         height: 1fr;
         border: solid $primary-background;
     }
-    ItemListView:focus {
+    ItemDataTable:focus {
         border: solid $accent;
+    }
+    ItemDataTable > .datatable--header {
+        background: $primary-background;
+        color: $text;
+        text-style: bold;
+    }
+    ItemDataTable > .datatable--cursor {
+        background: $accent;
+        color: $text;
+    }
+    ItemDataTable > .datatable--even-row {
+        background: $surface;
+    }
+    ItemDataTable > .datatable--odd-row {
+        background: $surface-darken-1;
     }
     """
 
@@ -118,7 +60,7 @@ class ItemListView(VerticalScroll):
         Binding("down", "cursor_down", "Down", show=False),
         Binding("k", "cursor_up", "Up", show=False),
         Binding("j", "cursor_down", "Down", show=False),
-        Binding("enter", "select", "Select"),
+        Binding("enter", "select_cursor", "Select"),
         Binding("space", "toggle", "Toggle"),
     ]
 
@@ -139,95 +81,152 @@ class ItemListView(VerticalScroll):
             self.item = item
             self.checked = checked
 
-    selected_index = reactive(0)
-
-    # Class variable to ensure unique IDs across all list updates
-    _id_counter = 0
-
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self.items: list[DisplayItem] = []
-        self._rows: list[ItemRow] = []
-        self._checked_items: set[str] = set()  # Track checked items by unique_id
-        self._update_counter = 0  # Instance counter for this list
+        self._checked: set[str] = set()
+        self._is_filtering = False  # Mutex flag for race condition protection
+        self.cursor_type = "row"
+        self.zebra_stripes = True
+        self._indicators = get_terminal_indicators()
 
-    def _make_row_id(self, index: int, item: DisplayItem) -> str:
-        """Create a unique row ID using list ID prefix and item unique ID."""
-        sanitized = sanitize_css_id(item.unique_id)
-        # Include list ID prefix, update counter, and index to ensure uniqueness
-        return f"{self.id}--{self._update_counter}--{index}--{sanitized}"
-
-    def compose(self) -> ComposeResult:
-        for i, item in enumerate(self.items):
-            row = ItemRow(item, id=self._make_row_id(i, item))
-            row.selected = i == self.selected_index
-            self._rows.append(row)
-            yield row
+    def on_mount(self) -> None:
+        """Initialize table columns on mount."""
+        self.add_columns("", "Name \u2022 Source", "Status", "Description")
 
     def set_items(self, items: list[DisplayItem]) -> None:
-        """Update the list items."""
-        # Increment update counter to ensure new unique IDs
-        self._update_counter += 1
+        """Replace all items (same API as old ItemListView).
 
-        # Remove all existing children first
-        children = list(self.children)
-        for child in children:
-            child.remove()
+        Preserves checked state across item updates.
+        Sets _is_filtering to prevent toggle race conditions.
+        """
+        self._is_filtering = True
+        try:
+            # Preserve checked state before clearing
+            checked_ids = self._checked.copy()
 
-        # Reset state
-        self.items = items
-        self.selected_index = 0
-        self._rows = []
-        self._checked_items.clear()
+            self.clear()
+            self.items = items
 
-        # Mount new rows with new unique IDs
-        for i, item in enumerate(items):
-            row = ItemRow(item, id=self._make_row_id(i, item))
-            row.selected = i == 0
-            self._rows.append(row)
-            self.mount(row)
+            # Bulk add rows for performance
+            for item in items:
+                indicator = self._get_indicator(item, checked_ids)
 
-    def watch_selected_index(self, old_index: int, new_index: int) -> None:
-        if 0 <= old_index < len(self._rows):
-            self._rows[old_index].selected = False
-        if 0 <= new_index < len(self._rows):
-            self._rows[new_index].selected = True
-            self._rows[new_index].scroll_visible()
+                # Sanitize external data (CRITICAL-001)
+                name = sanitize_terminal_text(item.name, max_length=self.MAX_NAME_LENGTH)
+                source = sanitize_terminal_text(
+                    item.source_name, max_length=self.MAX_SOURCE_LENGTH
+                )
+                name_source = f"{name} \u2022 {source}"
 
-    def action_cursor_up(self) -> None:
-        if self.selected_index > 0:
-            self.selected_index -= 1
+                # Sanitize platform names from external data
+                status = (
+                    f"[{', '.join(sanitize_terminal_text(p, max_length=self.MAX_PLATFORM_LENGTH) for p in item.installed_platforms)}]"
+                    if item.installed_platforms
+                    else ""
+                )
 
-    def action_cursor_down(self) -> None:
-        if self.selected_index < len(self.items) - 1:
-            self.selected_index += 1
+                # Build description with path prefix (sanitize path from external data)
+                description = sanitize_terminal_text(
+                    item.description or "No description",
+                    max_length=self.MAX_DESCRIPTION_LENGTH,
+                )
+                path_prefix = ""
+                if item.relative_path:
+                    parent = str(PurePosixPath(item.relative_path).parent)
+                    if parent and parent != ".":
+                        path_prefix = f"[{sanitize_terminal_text(parent, max_length=self.MAX_PATH_PREFIX_LENGTH)}] "
+                desc = path_prefix + description
+                if len(desc) > self.MAX_DESCRIPTION_LENGTH:
+                    desc = desc[: self.MAX_DESCRIPTION_LENGTH - 3] + "..."
 
-    def action_select(self) -> None:
-        if self.items:
-            self.post_message(self.ItemSelected(self.items[self.selected_index]))
+                self.add_row(indicator, name_source, status, desc, key=item.unique_id)
 
-    def action_toggle(self) -> None:
-        """Toggle the checked state of the current item."""
-        if not self.items or not self._rows:
-            return
-        row = self._rows[self.selected_index]
-        item = self.items[self.selected_index]
-        # Toggle the checked state
-        new_checked = not row.checked
-        row.checked = new_checked
-        # Track in set
-        if new_checked:
-            self._checked_items.add(item.unique_id)
-        else:
-            self._checked_items.discard(item.unique_id)
-        self.post_message(self.ItemToggled(item, new_checked))
+            # Restore checked state
+            self._checked = checked_ids
+            self._sync_checked_state_with_display()
+        finally:
+            self._is_filtering = False
+
+    def _get_indicator(
+        self, item: DisplayItem, checked_set: set[str] | None = None
+    ) -> str:
+        """Get the indicator for an item."""
+        check_set = checked_set if checked_set is not None else self._checked
+        if item.unique_id in check_set:
+            return self._indicators["checked"]
+        if item.installed_platforms:
+            return self._indicators["installed"]
+        return self._indicators["unchecked"]
+
+    def _sync_checked_state_with_display(self) -> None:
+        """Synchronize checked indicators with _checked set."""
+        for idx, item in enumerate(self.items):
+            if item.unique_id in self._checked:
+                coord = Coordinate(idx, 0)
+                if coord.row < self.row_count:
+                    self.update_cell_at(coord, self._indicators["checked"])
 
     def get_checked_items(self) -> list[DisplayItem]:
         """Get all currently checked items."""
-        return [item for item in self.items if item.unique_id in self._checked_items]
+        return [item for item in self.items if item.unique_id in self._checked]
 
     def clear_checked(self) -> None:
         """Clear all checked items."""
-        for row in self._rows:
-            row.checked = False
-        self._checked_items.clear()
+        self._checked.clear()
+        for idx, item in enumerate(self.items):
+            coord = Coordinate(idx, 0)
+            if coord.row < self.row_count:
+                indicator = self._get_indicator(item)
+                self.update_cell_at(coord, indicator)
+
+    def action_toggle(self) -> None:
+        """Toggle the checked state of the current row."""
+        # Race condition protection
+        if self._is_filtering:
+            return
+
+        if not self.items or self.cursor_row is None:
+            return
+
+        row_idx = self.cursor_row
+        if row_idx >= len(self.items):
+            return
+
+        item = self.items[row_idx]
+        unique_id = item.unique_id
+
+        # Toggle state
+        if unique_id in self._checked:
+            self._checked.discard(unique_id)
+            new_checked = False
+        else:
+            self._checked.add(unique_id)
+            new_checked = True
+
+        # Update indicator
+        coord = Coordinate(row_idx, 0)
+        indicator = self._get_indicator(item)
+        self.update_cell_at(coord, indicator)
+
+        # Post message
+        self.post_message(self.ItemToggled(item, new_checked))
+
+    @on(DataTable.RowSelected)
+    def on_row_selected(self, event: DataTable.RowSelected) -> None:
+        """Handle row selection (Enter key)."""
+        row_key = event.row_key
+        if row_key is None:
+            return
+
+        # Find item by row key (use row_key, not cursor_row per plan correction)
+        item = next(
+            (item for item in self.items if item.unique_id == str(row_key.value)),
+            None,
+        )
+        if item:
+            self.post_message(self.ItemSelected(item))
+
+
+# Backwards compatibility alias
+ItemListView = ItemDataTable

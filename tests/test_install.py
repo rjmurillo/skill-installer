@@ -9,7 +9,8 @@ import pytest
 
 from skill_installer.discovery import DiscoveredItem
 from skill_installer.gitops import GitOps
-from skill_installer.install import Installer, InstallResult, get_project_root
+from skill_installer.install import Installer, get_project_root
+from skill_installer.types import InstallResult
 from skill_installer.registry import RegistryManager
 
 
@@ -105,6 +106,37 @@ class TestInstallResult:
         )
         assert result.success is False
         assert result.error == "Validation failed"
+
+    def test_success_with_error_raises(self) -> None:
+        """Creating success=True with error set raises ValueError."""
+        with pytest.raises(ValueError, match="success=True but error is set"):
+            InstallResult(
+                success=True,
+                item_id="source/agent/test",
+                platform="claude",
+                installed_path=None,
+                error="should not be here",
+            )
+
+    def test_failure_without_error_raises(self) -> None:
+        """Creating success=False without error raises ValueError."""
+        with pytest.raises(ValueError, match="success=False requires error message"):
+            InstallResult(
+                success=False,
+                item_id="source/agent/test",
+                platform="claude",
+                installed_path=None,
+            )
+
+    def test_empty_item_id_raises(self) -> None:
+        """Creating InstallResult with empty item_id raises ValueError."""
+        with pytest.raises(ValueError, match="item_id cannot be empty"):
+            InstallResult(
+                success=True,
+                item_id="",
+                platform="claude",
+                installed_path=None,
+            )
 
 
 class TestInstaller:

@@ -261,10 +261,10 @@ class TUI:
         choice = Prompt.ask("Select item", default="0")
         try:
             idx = int(choice)
-            if 1 <= idx <= len(items):
-                return items[idx - 1]
         except ValueError:
-            pass
+            return None
+        if 1 <= idx <= len(items):
+            return items[idx - 1]
         return None
 
     def select_source(self, sources: list[Source]) -> Source | None:
@@ -288,8 +288,8 @@ class TUI:
         choice = Prompt.ask("Select source", default="0")
         try:
             idx = int(choice)
-            if 1 <= idx <= len(sources):
-                return sources[idx - 1]
         except ValueError:
-            pass
+            return None
+        if 1 <= idx <= len(sources):
+            return sources[idx - 1]
         return None

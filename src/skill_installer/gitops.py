@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import ssl
 import logging
 import re
 import shutil
@@ -208,7 +209,7 @@ class GitOps:
                 api_url,
                 headers={"Accept": "application/vnd.github.v3+json"},
             )
-            with urllib.request.urlopen(request, timeout=10) as response:
+            with urllib.request.urlopen(request, timeout=10, context=ssl.create_default_context()) as response:
                 import json
 
                 data = json.loads(response.read().decode("utf-8"))

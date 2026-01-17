@@ -28,11 +28,11 @@ class Platform(Protocol):
     @property
     def base_dir(self) -> Path:
         """Get the base directory for this platform."""
-        ...
+        raise NotImplementedError
 
     def ensure_dirs(self) -> None:
         """Create platform directories if they don't exist."""
-        ...
+        raise NotImplementedError
 
     def get_install_path(self, item_type: str, name: str) -> Path:
         """Get the installation path for an item.
@@ -47,7 +47,7 @@ class Platform(Protocol):
         Raises:
             ValueError: If item type is not supported.
         """
-        ...
+        raise NotImplementedError
 
     def validate_agent(self, content: str) -> list[str]:
         """Validate agent/skill content for this platform's format.
@@ -58,7 +58,7 @@ class Platform(Protocol):
         Returns:
             List of validation errors (empty if valid).
         """
-        ...
+        raise NotImplementedError
 
     def is_available(self) -> bool:
         """Check if this platform is available on the current system.
@@ -66,7 +66,7 @@ class Platform(Protocol):
         Returns:
             True if the platform appears to be installed.
         """
-        ...
+        raise NotImplementedError
 
     def get_project_install_path(
         self, project_root: Path, item_type: str, name: str
@@ -84,7 +84,7 @@ class Platform(Protocol):
         Raises:
             ValueError: If item type is not supported.
         """
-        ...
+        raise NotImplementedError
 
 
 __all__ = [

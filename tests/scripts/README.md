@@ -209,3 +209,139 @@ watch -n 1 'tmux capture-pane -t debug-tui -p'
 # In terminal 1: Interact manually with TUI
 # Test your workflows and verify output
 ```
+
+## Performance Profiling
+
+If the TUI is slow to start, use these scripts to identify bottlenecks.
+
+### Quick Startup Timing
+
+Measure how long the TUI takes to render:
+
+```bash
+./tests/scripts/profile_tui_interactive.sh
+```
+
+This launches the TUI in tmux and measures time until "Skill Installer" appears.
+
+**Example output:**
+```
+TUI Interactive Startup Profiler
+=================================
+
+Waiting for TUI to render...
+.......................
+
+TUI rendered successfully!
+
+=================================
+STARTUP TIME: 12.5s
+=================================
+
+Status: 501 items available, 6 installed
+```
+
+### Component Profiling (No UI)
+
+Profile imports, context creation, and data loading without launching the interactive UI:
+
+```bash
+uv run python tests/scripts/profile_tui_startup.py
+```
+
+**Example output:**
+```
+============================================================
+PHASE 1: Imports
+============================================================
+  Import create_context: 0.04s
+  Import SkillInstallerApp: 0.27s
+
+============================================================
+PHASE 2: Context Creation
+============================================================
+  create_context(): 0.30s
+
+============================================================
+PHASE 3: Data Loading
+============================================================
+  update_stale_sources(): 0.00s
+  load_all_data(): 0.98s
+    - 501 discovered items
+    - 6 installed items
+    - 8 sources
+
+============================================================
+PHASE 4: Widget Creation (simulation)
+============================================================
+  Create 501 ItemRow widgets: 0.02s
+  Estimated total nested widgets: 2505
+```
+
+### Detailed Method Profiling
+
+Run the full TUI with method-level timing instrumentation:
+
+```bash
+timeout 30 uv run python tests/scripts/profile_tui_detailed.py
+# Press 'q' to quit once loaded
+cat /tmp/tui_profile_detailed.log
+```
+
+This patches internal methods and logs timing data:
+
+**Example output:**
+```
+============================================================
+TIMING SUMMARY
+============================================================
+  DataManager.update_stale_sources: 0.00s (1 calls)
+  DataManager.load_all_data: 0.98s (1 calls)
+  ItemListView.set_items(501 items): 2.79s (1 calls)
+  ItemListView.set_items(6 items): 0.03s (1 calls)
+  ItemRow.compose: 507 calls
+
+  Total app.run(): 16.29s
+  Unaccounted (Textual layout/CSS/render): ~12.49s
+============================================================
+```
+
+### Interpreting Results
+
+| Metric | What It Means |
+|--------|---------------|
+| `load_all_data` | Time to discover items from all sources |
+| `ItemListView.set_items` | Time to create and mount ItemRow widgets |
+| `ItemRow.compose` count | Number of item widgets created |
+| `Unaccounted` time | Textual's layout/CSS/render processing |
+
+**Common bottlenecks:**
+
+1. **High `load_all_data` time** → Too many sources or slow discovery
+2. **High `set_items` time** → Too many widgets being mounted
+3. **High unaccounted time** → Textual processing too many widgets
+
+**Fixes:**
+
+- Reduce widget count (virtualization/pagination)
+- Simplify widget nesting (fewer child widgets per row)
+- Lazy load data on demand
+
+### Ad-hoc Profiling
+
+For one-off profiling, patch methods directly:
+
+```python
+import time
+from skill_installer.tui.data_manager import DataManager
+
+original = DataManager.load_all_data
+def timed(self):
+    start = time.time()
+    result = original(self)
+    print(f"load_all_data: {time.time() - start:.2f}s")
+    return result
+DataManager.load_all_data = timed
+```
+
+Then run the TUI and observe timing in the terminal.

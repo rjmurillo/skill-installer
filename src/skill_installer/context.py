@@ -26,6 +26,12 @@ if TYPE_CHECKING:
     pass
 
 
+
+def _default_filesystem() -> FileSystem:
+    """Create the default filesystem implementation."""
+    from skill_installer.filesystem import RealFileSystem
+    return RealFileSystem()
+
 @dataclass
 class AppContext:
     """Container for application dependencies.
@@ -41,14 +47,9 @@ class AppContext:
     gitops: SourceRepository
     discovery: ItemDiscovery
     installer: ItemInstaller
-    filesystem: FileSystem = field(default_factory=lambda: _default_filesystem())
+    filesystem: FileSystem = field(default_factory=_default_filesystem)
 
 
-def _default_filesystem() -> FileSystem:
-    """Create the default filesystem implementation."""
-    from skill_installer.filesystem import RealFileSystem
-
-    return RealFileSystem()
 
 
 def create_context(

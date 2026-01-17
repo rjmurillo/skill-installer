@@ -1,0 +1,7 @@
+name: skill-installer CodeQL configuration
+version: 2
+queries:
+  - uses: security-extended
+  - uses: security-and-quality
+packs:
+  - codeql/python-all

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 from unittest.mock import patch
 
@@ -22,6 +23,7 @@ from skill_installer.tui import (
     SourceRow,
     _sanitize_css_id,
 )
+from skill_installer.tui._utils import get_terminal_indicators, sanitize_terminal_text
 
 
 class TestSanitizeCssId:
@@ -76,6 +78,178 @@ class TestSanitizeCssId:
         # Verify no invalid characters remain
         assert " " not in result
         assert "/" not in result
+
+
+class TestSanitizeTerminalText:
+    """Tests for sanitize_terminal_text security function (CRITICAL-001)."""
+
+    def test_removes_ansi_clear_screen(self) -> None:
+        """ANSI clear screen escape stripped."""
+        text = "safe\x1b[2Junsafe"
+        assert sanitize_terminal_text(text) == "safeunsafe"
+
+    def test_removes_ansi_cursor_position(self) -> None:
+        """ANSI cursor positioning stripped."""
+        text = "normal\x1b[Hmalicious"
+        assert sanitize_terminal_text(text) == "normalmalicious"
+
+    def test_removes_ansi_color_codes(self) -> None:
+        """ANSI color codes stripped."""
+        text = "\x1b[31mred\x1b[0m normal"
+        assert sanitize_terminal_text(text) == "red normal"
+
+    def test_removes_complex_ansi_sequences(self) -> None:
+        """Complex ANSI sequences with multiple parameters stripped."""
+        text = "\x1b[1;31;40mbold red on black\x1b[0m"
+        assert sanitize_terminal_text(text) == "bold red on black"
+
+    def test_removes_unicode_rlo_override(self) -> None:
+        """Unicode Right-to-Left Override attack prevented."""
+        text = "normal\u202ereversed"
+        result = sanitize_terminal_text(text)
+        assert "\u202e" not in result
+        assert result == "normalreversed"
+
+    def test_removes_unicode_lro_override(self) -> None:
+        """Unicode Left-to-Right Override stripped."""
+        text = "\u202dtext"
+        result = sanitize_terminal_text(text)
+        assert "\u202d" not in result
+
+    def test_removes_unicode_directional_marks(self) -> None:
+        """Unicode directional marks stripped."""
+        text = "a\u200fb\u200ec"
+        result = sanitize_terminal_text(text)
+        assert "\u200f" not in result
+        assert "\u200e" not in result
+        assert result == "abc"
+
+    def test_removes_control_characters(self) -> None:
+        """Control characters removed except newline and tab."""
+        text = "normal\x00\x01\x07hidden"
+        result = sanitize_terminal_text(text)
+        assert "\x00" not in result
+        assert "\x01" not in result
+        assert "\x07" not in result
+        assert result == "normalhidden"
+
+    def test_preserves_newlines(self) -> None:
+        """Newlines are preserved."""
+        text = "line1\nline2"
+        assert sanitize_terminal_text(text) == "line1\nline2"
+
+    def test_preserves_tabs(self) -> None:
+        """Tabs are preserved."""
+        text = "col1\tcol2"
+        assert sanitize_terminal_text(text) == "col1\tcol2"
+
+    def test_truncates_at_max_length(self) -> None:
+        """Long text truncated with ellipsis."""
+        text = "a" * 150
+        result = sanitize_terminal_text(text, max_length=100)
+        assert len(result) == 100
+        assert result.endswith("...")
+        assert result == "a" * 97 + "..."
+
+    def test_no_truncation_under_max_length(self) -> None:
+        """Text under max_length not truncated."""
+        text = "short text"
+        result = sanitize_terminal_text(text, max_length=100)
+        assert result == text
+        assert "..." not in result
+
+    def test_empty_string(self) -> None:
+        """Empty string returns empty string."""
+        assert sanitize_terminal_text("") == ""
+
+    def test_combined_attack_vector(self) -> None:
+        """Combined attack with multiple vectors blocked."""
+        # Realistic attack: clear screen, move cursor, spoof message
+        text = "\x1b[2J\x1b[H[SYSTEM] Password accepted\u202e!"
+        result = sanitize_terminal_text(text)
+        assert result == "[SYSTEM] Password accepted!"
+        assert "\x1b" not in result
+        assert "\u202e" not in result
+
+    def test_removes_osc_title_sequence(self) -> None:
+        """OSC (Operating System Command) title sequences stripped."""
+        # OSC sequence to set terminal title, terminated with BEL
+        text = "before\x1b]0;Malicious Title\x07after"
+        assert sanitize_terminal_text(text) == "beforeafter"
+
+    def test_removes_osc_sequence_with_st_terminator(self) -> None:
+        """OSC sequences with ST terminator stripped."""
+        # OSC sequence terminated with ST (String Terminator)
+        text = "safe\x1b]0;Evil\x1b\\text"
+        assert sanitize_terminal_text(text) == "safetext"
+
+    def test_removes_dcs_sequence(self) -> None:
+        """DCS (Device Control String) sequences stripped."""
+        text = "safe\x1bPdevice-data\x1b\\text"
+        assert sanitize_terminal_text(text) == "safetext"
+
+    def test_removes_apc_sequence(self) -> None:
+        """APC (Application Program Command) sequences stripped."""
+        text = "normal\x1b_application-data\x1b\\content"
+        assert sanitize_terminal_text(text) == "normalcontent"
+
+
+class TestGetTerminalIndicators:
+    """Tests for get_terminal_indicators encoding detection (CRITICAL-002)."""
+
+    def test_utf8_encoding_returns_unicode(self) -> None:
+        """UTF-8 terminal returns Unicode indicators."""
+        with patch.object(sys, "stdout") as mock_stdout:
+            mock_stdout.encoding = "utf-8"
+            indicators = get_terminal_indicators()
+            assert indicators["checked"] == "\u25c9"  # ◉
+            assert indicators["installed"] == "\u25cf"  # ●
+            assert indicators["unchecked"] == "\u25cb"  # ○
+
+    def test_utf8_variant_encoding(self) -> None:
+        """UTF8 (without hyphen) variant detected correctly."""
+        with patch.object(sys, "stdout") as mock_stdout:
+            mock_stdout.encoding = "UTF8"
+            indicators = get_terminal_indicators()
+            assert indicators["checked"] == "\u25c9"
+
+    def test_ascii_fallback_cp437(self) -> None:
+        """Non-UTF-8 terminal (cp437) returns ASCII indicators."""
+        with patch.object(sys, "stdout") as mock_stdout:
+            mock_stdout.encoding = "cp437"
+            indicators = get_terminal_indicators()
+            assert indicators["checked"] == "[x]"
+            assert indicators["installed"] == "[*]"
+            assert indicators["unchecked"] == "[ ]"
+
+    def test_ascii_fallback_latin1(self) -> None:
+        """Latin-1 encoding returns ASCII indicators."""
+        with patch.object(sys, "stdout") as mock_stdout:
+            mock_stdout.encoding = "latin-1"
+            indicators = get_terminal_indicators()
+            assert indicators["checked"] == "[x]"
+
+    def test_none_encoding_fallback(self) -> None:
+        """None encoding falls back to UTF-8 default."""
+        with patch.object(sys, "stdout") as mock_stdout:
+            mock_stdout.encoding = None
+            with patch("skill_installer.tui._utils.locale") as mock_locale:
+                mock_locale.getpreferredencoding.return_value = "utf-8"
+                indicators = get_terminal_indicators()
+                assert indicators["checked"] == "\u25c9"
+
+    def test_exception_handling(self) -> None:
+        """Exception during encoding detection returns valid dict."""
+        with patch.object(sys, "stdout") as mock_stdout:
+            mock_stdout.encoding = None
+            with patch("skill_installer.tui._utils.locale") as mock_locale:
+                mock_locale.getpreferredencoding.side_effect = TypeError("test error")
+                indicators = get_terminal_indicators()
+                # Falls back to UTF-8 on exception
+                assert isinstance(indicators, dict)
+                assert "checked" in indicators
+                assert "installed" in indicators
+                assert "unchecked" in indicators
 
 
 class TestDisplaySource:
@@ -602,11 +776,12 @@ class TestAddSourceScreenValidation:
         error = screen._validate_url("https://example.com/repo")
         assert error is None
 
-    def test_validate_http_url_passes(self) -> None:
-        """Test HTTP URL passes validation."""
+    def test_validate_http_url_fails(self) -> None:
+        """Test HTTP URL fails validation (requires HTTPS)."""
         screen = AddSourceScreen()
         error = screen._validate_url("http://example.com/repo")
-        assert error is None
+        assert error is not None
+        assert "https" in error.lower()
 
     def test_validate_ssh_url_passes(self) -> None:
         """Test SSH URL passes validation."""
@@ -1303,7 +1478,7 @@ class _ItemListTestApp(App):
 
 
 class TestItemListView:
-    """Tests for ItemListView widget."""
+    """Tests for ItemListView (ItemDataTable) widget."""
 
     @pytest.mark.asyncio
     async def test_set_items(self) -> None:
@@ -1314,7 +1489,8 @@ class TestItemListView:
             app.item_list.set_items(items)
 
             assert len(app.item_list.items) == 1
-            assert app.item_list.selected_index == 0
+            # cursor_row is 0 when table has items (DataTable uses cursor_row, not selected_index)
+            assert app.item_list.cursor_row == 0
 
     @pytest.mark.asyncio
     async def test_cursor_navigation(self) -> None:
@@ -1331,19 +1507,19 @@ class TestItemListView:
             ]
             app.item_list.set_items(items)
 
-            assert app.item_list.selected_index == 0
+            assert app.item_list.cursor_row == 0
 
             app.item_list.action_cursor_down()
-            assert app.item_list.selected_index == 1
+            assert app.item_list.cursor_row == 1
 
             app.item_list.action_cursor_down()
-            assert app.item_list.selected_index == 1  # At bottom
+            assert app.item_list.cursor_row == 1  # At bottom
 
             app.item_list.action_cursor_up()
-            assert app.item_list.selected_index == 0
+            assert app.item_list.cursor_row == 0
 
             app.item_list.action_cursor_up()
-            assert app.item_list.selected_index == 0  # At top
+            assert app.item_list.cursor_row == 0  # At top
 
     @pytest.mark.asyncio
     async def test_action_toggle(self) -> None:
@@ -1377,11 +1553,11 @@ class TestItemListView:
 
     @pytest.mark.asyncio
     async def test_action_select_empty_list(self) -> None:
-        """Test action_select on empty list does nothing."""
+        """Test action_select_cursor on empty list does nothing."""
         app = _ItemListTestApp()
         async with app.run_test():
-            # Should not raise
-            app.item_list.action_select()
+            # DataTable uses action_select_cursor; should not raise
+            app.item_list.action_select_cursor()
 
     @pytest.mark.asyncio
     async def test_action_toggle_empty_list(self) -> None:
@@ -1392,8 +1568,8 @@ class TestItemListView:
             app.item_list.action_toggle()
 
     @pytest.mark.asyncio
-    async def test_watch_selected_index(self) -> None:
-        """Test watch_selected_index updates row states."""
+    async def test_cursor_row_updates_on_navigation(self) -> None:
+        """Test cursor_row updates when navigating (replaces watch_selected_index test)."""
         app = _ItemListTestApp()
         async with app.run_test():
             items = [
@@ -1406,99 +1582,82 @@ class TestItemListView:
             ]
             app.item_list.set_items(items)
 
-            assert app.item_list._rows[0].selected is True
-            assert app.item_list._rows[1].selected is False
+            # DataTable uses cursor_row directly, not _rows array
+            assert app.item_list.cursor_row == 0
 
-            app.item_list.selected_index = 1
+            app.item_list.action_cursor_down()
+            assert app.item_list.cursor_row == 1
 
-            assert app.item_list._rows[0].selected is False
-            assert app.item_list._rows[1].selected is True
+            app.item_list.action_cursor_up()
+            assert app.item_list.cursor_row == 0
 
 
 # ============================================================================
-# Tests for ItemRow
+# Tests for ItemDataTable (replaces ItemRow tests)
 # ============================================================================
 
 
-class _ItemRowTestApp(App):
-    """Test app for ItemRow tests."""
-
-    def __init__(self, item: DisplayItem) -> None:
-        super().__init__()
-        self.test_item = item
-
-    def compose(self) -> ComposeResult:
-        from skill_installer.tui.widgets.item_list import ItemRow
-
-        yield ItemRow(self.test_item, id="test-row")
-
-
-class TestItemRow:
-    """Tests for ItemRow widget."""
+class TestItemDataTable:
+    """Tests for ItemDataTable widget (replaces ItemRow tests)."""
 
     @pytest.mark.asyncio
-    async def test_compose_not_installed(self) -> None:
-        """Test ItemRow compose for non-installed item."""
-        item = _make_test_display_item()
-        app = _ItemRowTestApp(item)
+    async def test_row_displays_for_not_installed(self) -> None:
+        """Test ItemDataTable row displays for non-installed item."""
+        app = _ItemListTestApp()
         async with app.run_test():
-            from skill_installer.tui.widgets.item_list import ItemRow
-
-            row = app.query_one("#test-row", ItemRow)
-            assert row is not None
+            item = _make_test_display_item()
+            app.item_list.set_items([item])
+            assert len(app.item_list.items) == 1
+            assert app.item_list.row_count == 1
 
     @pytest.mark.asyncio
-    async def test_compose_installed(self) -> None:
-        """Test ItemRow compose for installed item."""
-        item = _make_test_display_item(
-            name="Installed Item",
-            item_type="agent",
-            description="An installed item",
-            installed_platforms=["claude"],
-        )
-        app = _ItemRowTestApp(item)
+    async def test_row_displays_for_installed(self) -> None:
+        """Test ItemDataTable row displays for installed item."""
+        app = _ItemListTestApp()
         async with app.run_test():
-            from skill_installer.tui.widgets.item_list import ItemRow
-
-            row = app.query_one("#test-row", ItemRow)
-            assert row is not None
-            assert row.item.installed_platforms == ["claude"]
+            item = _make_test_display_item(
+                name="Installed Item",
+                item_type="agent",
+                description="An installed item",
+                installed_platforms=["claude"],
+            )
+            app.item_list.set_items([item])
+            assert len(app.item_list.items) == 1
+            assert app.item_list.items[0].installed_platforms == ["claude"]
 
     @pytest.mark.asyncio
-    async def test_watch_selected(self) -> None:
-        """Test watch_selected adds/removes class."""
-        item = _make_test_display_item()
-        app = _ItemRowTestApp(item)
+    async def test_toggle_updates_checked_state(self) -> None:
+        """Test toggle updates checked state."""
+        app = _ItemListTestApp()
         async with app.run_test():
-            from skill_installer.tui.widgets.item_list import ItemRow
+            item = _make_test_display_item()
+            app.item_list.set_items([item])
 
-            row = app.query_one("#test-row", ItemRow)
+            assert len(app.item_list.get_checked_items()) == 0
 
-            assert "selected" not in row.classes
+            app.item_list.action_toggle()
+            assert len(app.item_list.get_checked_items()) == 1
 
-            row.selected = True
-            assert "selected" in row.classes
-
-            row.selected = False
-            assert "selected" not in row.classes
+            app.item_list.action_toggle()
+            assert len(app.item_list.get_checked_items()) == 0
 
     @pytest.mark.asyncio
-    async def test_watch_checked(self) -> None:
-        """Test watch_checked updates indicator and class."""
-        item = _make_test_display_item()
-        app = _ItemRowTestApp(item)
+    async def test_toggle_ignored_during_filtering(self) -> None:
+        """Toggle is ignored when _is_filtering flag is set (race protection)."""
+        app = _ItemListTestApp()
         async with app.run_test():
-            from skill_installer.tui.widgets.item_list import ItemRow
+            item = _make_test_display_item()
+            app.item_list.set_items([item])
 
-            row = app.query_one("#test-row", ItemRow)
+            # Simulate filtering in progress
+            app.item_list._is_filtering = True
+            app.item_list.action_toggle()
+            assert len(app.item_list.get_checked_items()) == 0
 
-            assert "checked" not in row.classes
-
-            row.checked = True
-            assert "checked" in row.classes
-
-            row.checked = False
-            assert "checked" not in row.classes
+            # After filtering completes, toggle should work
+            app.item_list._is_filtering = False
+            app.item_list.action_toggle()
+            assert len(app.item_list.get_checked_items()) == 1
 
 
 # ============================================================================

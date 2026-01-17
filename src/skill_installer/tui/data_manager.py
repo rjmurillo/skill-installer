@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import json
+import logging
 from typing import TYPE_CHECKING, Any
+
+logger = logging.getLogger(__name__)
 
 from skill_installer.tui.models import DisplayItem, DisplaySource
 
@@ -41,9 +44,8 @@ class DataManager:
             try:
                 self.gitops.clone_or_fetch(source.url, source.name)
                 self.registry_manager.update_source_sync_time(source.name)
-            except Exception:
-                # Silently ignore update failures during startup
-                pass
+            except Exception as e:
+                logger.debug("Failed to update source %s: %s", source.name, e)
 
     def load_all_data(self) -> tuple[
         list[DisplayItem],
@@ -203,6 +205,6 @@ class DataManager:
                 with open(marketplace_file) as f:
                     marketplace_data = json.load(f)
                     return marketplace_data.get("name", default_name)
-            except (json.JSONDecodeError, OSError):
-                pass
+            except (json.JSONDecodeError, OSError) as e:
+                logger.debug("Failed to parse marketplace.json: %s", e)
         return default_name

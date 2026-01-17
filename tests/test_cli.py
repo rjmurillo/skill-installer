@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from pathlib import Path
-from unittest.mock import MagicMock, PropertyMock
+from unittest.mock import MagicMock
 
 import pytest
 import typer
@@ -17,7 +17,7 @@ import typer
 from skill_installer import cli
 from skill_installer.context import AppContext
 from skill_installer.discovery import DiscoveredItem
-from skill_installer.install import InstallResult
+from skill_installer.types import InstallResult
 from skill_installer.registry import InstalledItem, Source
 
 

@@ -11,14 +11,15 @@ All concrete implementations satisfy these protocols structurally (duck typing).
 
 from __future__ import annotations
 
-from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
+from skill_installer.types import InstallResult
+
 if TYPE_CHECKING:
     from skill_installer.discovery import DiscoveredItem
-    from skill_installer.install import InstallResult
     from skill_installer.registry import InstalledItem, Source
+
 
 
 @runtime_checkable

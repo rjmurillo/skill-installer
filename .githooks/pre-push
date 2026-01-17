@@ -1,56 +1,47 @@
 #!/bin/bash
-# Pre-push hook: Run CodeQL security analysis
-# Runs full CodeQL scan before pushing to remote
-
+# Pre-push hook: Run CodeQL security analysis via shared script
 set -e
 
-echo "Running CodeQL security analysis..."
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+SCRIPT="$REPO_ROOT/.codeql/scripts/run-codeql.sh"
 
-# Check if gh codeql is available
-if ! command -v gh &> /dev/null || ! gh extension list | grep -q codeql; then
-    echo "Warning: gh-codeql not installed. Skipping CodeQL analysis."
-    echo "Install with: gh extension install github/gh-codeql"
+if [ ! -x "$SCRIPT" ]; then
+    echo "CodeQL script missing or not executable: $SCRIPT" >&2
+    echo "Run: chmod +x $SCRIPT" >&2
+    exit 1
+fi
+
+# Audit log for tracking security scan bypasses
+AUDIT_LOG="$REPO_ROOT/.codeql/bypass-audit.log"
+
+log_bypass() {
+    local reason="$1"
+    local timestamp
+    timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+    local user
+    user=$(git config user.email || echo "unknown")
+    local branch
+    branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
+    mkdir -p "$(dirname "$AUDIT_LOG")"
+    echo "$timestamp | $user | $branch | $reason" >> "$AUDIT_LOG"
+    echo "Bypass logged to $AUDIT_LOG" >&2
+}
+
+# Check for explicit bypass request
+SKIP_CODEQL=${SKIP_CODEQL:-}
+if [ "$SKIP_CODEQL" = "1" ]; then
+    echo "WARNING: Security scan bypassed by SKIP_CODEQL=1" >&2
+    log_bypass "SKIP_CODEQL=1 explicit bypass"
     exit 0
 fi
 
-REPO_ROOT="$(git rev-parse --show-toplevel)"
-DB_PATH="${REPO_ROOT}/.codeql-db"
-RESULTS_PATH="${REPO_ROOT}/.codeql-results"
-
-# Clean up previous database
-rm -rf "$DB_PATH" "$RESULTS_PATH"
-
-# Create CodeQL database
-echo "Creating CodeQL database..."
-gh codeql database create "$DB_PATH" \
-    --language=python \
-    --source-root="$REPO_ROOT" \
-    --overwrite \
-    --quiet
-
-# Run security queries
-echo "Running security queries..."
-gh codeql database analyze "$DB_PATH" \
-    --format=sarif-latest \
-    --output="${RESULTS_PATH}/results.sarif" \
-    codeql/python-queries:codeql-suites/python-security-extended.qls \
-    --quiet
-
-# Check for high/critical severity issues
-if command -v jq &> /dev/null; then
-    HIGH_SEVERITY=$(jq '[.runs[].results[] | select(.level == "error" or .level == "warning")] | length' "${RESULTS_PATH}/results.sarif" 2>/dev/null || echo "0")
-    if [ "$HIGH_SEVERITY" -gt 0 ]; then
-        echo "CodeQL found $HIGH_SEVERITY security issue(s):"
-        jq -r '.runs[].results[] | select(.level == "error" or .level == "warning") | "  - \(.ruleId): \(.message.text)"' "${RESULTS_PATH}/results.sarif"
-        echo ""
-        echo "Push blocked. Fix security issues before pushing."
-        exit 1
-    fi
+if ! command -v gh >/dev/null 2>&1 || ! gh extension list | grep -q codeql; then
+    echo "ERROR: gh-codeql not installed. Security scan required." >&2
+    echo "Install with: gh extension install github/gh-codeql" >&2
+    echo "To bypass (NOT RECOMMENDED): SKIP_CODEQL=1 git push" >&2
+    exit 1
 fi
 
-echo "CodeQL analysis passed. No security issues found."
-
-# Clean up
-rm -rf "$DB_PATH" "$RESULTS_PATH"
+$SCRIPT
 
 exit 0

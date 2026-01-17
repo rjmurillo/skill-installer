@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import logging
 import webbrowser
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 from textual import on
 from textual.app import App, ComposeResult
@@ -138,7 +141,8 @@ class SkillInstallerApp(App):
         try:
             webbrowser.open(url)
             return True
-        except Exception:
+        except Exception as e:
+            logger.debug("Failed to open browser for URL %s: %s", url, e)
             return False
 
     def action_next_tab(self) -> None:
@@ -226,8 +230,8 @@ class SkillInstallerApp(App):
                     self._operations.install_item(item, reload_data=False)
                 list_view.clear_checked()
                 self._load_data()
-            elif list_view.items:
-                item = list_view.items[list_view.selected_index]
+            elif list_view.items and list_view.cursor_row is not None:
+                item = list_view.items[list_view.cursor_row]
                 self._operations.install_item(item)
 
     @on(ItemListView.ItemSelected)

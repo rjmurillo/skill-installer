@@ -2,20 +2,20 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import logging
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 from skill_installer.discovery import DiscoveredItem
 from skill_installer.filesystem import RealFileSystem
 from skill_installer.gitops import GitOps
+
 from skill_installer.platforms import get_platform
 from skill_installer.protocols import FileSystem
 from skill_installer.registry import RegistryManager
 from skill_installer.transform import TransformEngine
+from skill_installer.types import InstallResult
 
-if TYPE_CHECKING:
-    pass
+logger = logging.getLogger(__name__)
 
 
 def get_project_root(start_path: Path | None = None) -> Path | None:
@@ -40,17 +40,6 @@ def get_project_root(start_path: Path | None = None) -> Path | None:
     return None
 
 
-@dataclass
-class InstallResult:
-    """Result of an installation operation."""
-
-    success: bool
-    item_id: str
-    platform: str
-    installed_path: Path | None
-    error: str | None = None
-
-
 class Installer:
     """Handles installation of skills and agents.
 
@@ -62,7 +51,7 @@ class Installer:
         self,
         registry: RegistryManager,
         gitops: GitOps,
-        transformer: TransformEngine,
+        transformer: 'TransformEngine',
         filesystem: FileSystem,
     ) -> None:
         """Initialize installer with required dependencies.
@@ -87,7 +76,7 @@ class Installer:
         cls,
         registry: RegistryManager,
         gitops: GitOps,
-        transformer: TransformEngine | None = None,
+        transformer: 'TransformEngine' | None = None,
         filesystem: FileSystem | None = None,
     ) -> Installer:
         """Factory method for production instantiation.
@@ -225,6 +214,7 @@ class Installer:
             )
 
         except Exception as e:
+            logger.exception("Installation failed for %s", item_id)
             return InstallResult(
                 success=False,
                 item_id=item_id,
@@ -266,6 +256,7 @@ class Installer:
                     )
                 )
             except Exception as e:
+                logger.exception("Uninstallation failed for %s on %s", item_id, item.platform)
                 results.append(
                     InstallResult(
                         success=False,

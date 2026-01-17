@@ -48,6 +48,9 @@ worktree--/
 .codeql/db/
 .codeql/results/
 .codeql/logs/
+.codeql/skill-installer-codeql-db/
+.codeql/skill-installer-codeql.sarif
+.codeql/bypass-audit.log
 .codeql-db/
 .codeql-results/
 

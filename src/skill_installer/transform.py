@@ -10,14 +10,11 @@ new platform pairs to be added without modifying the engine.
 
 from __future__ import annotations
 
-import re
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING
 
 import yaml
 
-if TYPE_CHECKING:
-    from skill_installer.protocols import TransformStrategy
+from skill_installer.protocols import TransformStrategy
 
 
 class BaseTransformStrategy(ABC):
@@ -50,12 +47,12 @@ class BaseTransformStrategy(ABC):
     @abstractmethod
     def transform_frontmatter(self, frontmatter: dict) -> dict:
         """Transform frontmatter fields for the target platform."""
-        ...
+        raise NotImplementedError
 
     @abstractmethod
     def transform_syntax(self, body: str) -> str:
         """Transform body syntax for the target platform."""
-        ...
+        raise NotImplementedError
 
     def _map_model_to_full(self, model: str) -> str:
         """Map short model name to full name."""
