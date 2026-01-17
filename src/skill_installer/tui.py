@@ -2,10 +2,35 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from rich.console import Console
+
+
+def _sanitize_css_id(value: str) -> str:
+    """Sanitize a string for use as a CSS ID.
+
+    CSS IDs can only contain letters, numbers, underscores, or hyphens,
+    and must not begin with a number.
+
+    Args:
+        value: The string to sanitize.
+
+    Returns:
+        A valid CSS ID string.
+    """
+    # Replace common separators with hyphens
+    sanitized = value.replace("/", "--").replace(" ", "-")
+    # Remove any remaining invalid characters
+    sanitized = re.sub(r"[^a-zA-Z0-9_-]", "", sanitized)
+    # Ensure it doesn't start with a number
+    if sanitized and sanitized[0].isdigit():
+        sanitized = f"id-{sanitized}"
+    return sanitized or "item"
+
+
 from rich.panel import Panel
 from rich.prompt import Confirm, Prompt
 from rich.table import Table
@@ -201,8 +226,7 @@ class ItemListView(VerticalScroll):
 
     def _make_row_id(self, index: int, item: DisplayItem) -> str:
         """Create a unique row ID using list ID prefix and item unique ID."""
-        # Sanitize the unique_id for valid CSS ID (replace / with --)
-        sanitized = item.unique_id.replace("/", "--")
+        sanitized = _sanitize_css_id(item.unique_id)
         # Include list ID prefix and index to handle duplicates within same list
         return f"{self.id}--{index}--{sanitized}"
 
@@ -386,8 +410,7 @@ class SourceListView(VerticalScroll):
 
     def _make_row_id(self, index: int, source: Source) -> str:
         """Create a unique row ID using list ID prefix and source name."""
-        # Sanitize the source name for valid CSS ID
-        sanitized = source.name.replace("/", "--").replace(" ", "-")
+        sanitized = _sanitize_css_id(source.name)
         return f"{self.id}--{index}--{sanitized}"
 
     def set_sources(self, sources: list[Source]) -> None:
