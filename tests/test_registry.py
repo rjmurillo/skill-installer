@@ -122,14 +122,21 @@ class TestRegistryManager:
         assert len(registry.sources) == 1
 
     def test_add_source_derive_name(self, temp_registry: RegistryManager) -> None:
-        """Test adding source with auto-derived name."""
+        """Test adding source with auto-derived name includes owner/repo."""
         source = temp_registry.add_source("https://github.com/user/my-repo")
-        assert source.name == "my-repo"
+        assert source.name == "user/my-repo"
 
     def test_add_source_derive_name_git_suffix(self, temp_registry: RegistryManager) -> None:
         """Test name derivation removes .git suffix."""
         source = temp_registry.add_source("https://github.com/user/repo.git")
-        assert source.name == "repo"
+        assert source.name == "user/repo"
+
+    def test_add_source_derive_name_different_orgs(self, temp_registry: RegistryManager) -> None:
+        """Test adding sources with same repo name but different orgs."""
+        source1 = temp_registry.add_source("https://github.com/anthropics/skills")
+        source2 = temp_registry.add_source("https://github.com/openai/skills")
+        assert source1.name == "anthropics/skills"
+        assert source2.name == "openai/skills"
 
     def test_add_source_duplicate(self, temp_registry: RegistryManager) -> None:
         """Test adding duplicate source raises error."""

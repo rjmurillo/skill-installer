@@ -205,10 +205,12 @@ class RegistryManager:
 
         # Derive name from URL if not provided
         if name is None:
-            # Extract repo name from URL (e.g., "ai-agents" from github.com/user/ai-agents)
-            name = url.rstrip("/").split("/")[-1]
-            if name.endswith(".git"):
-                name = name[:-4]
+            # Extract owner/repo from URL (e.g., "anthropics/skills" from github.com/anthropics/skills)
+            parts = url.rstrip("/").rstrip(".git").split("/")
+            if len(parts) >= 2:
+                name = f"{parts[-2]}/{parts[-1]}"
+            else:
+                name = parts[-1]
 
         # Check for duplicates
         for source in registry.sources:
