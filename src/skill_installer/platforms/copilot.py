@@ -5,8 +5,10 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+from skill_installer.platforms.base import BasePlatform
 
-class CopilotPlatform:
+
+class CopilotPlatform(BasePlatform):
     """GitHub Copilot CLI platform handler."""
 
     name = "copilot"
@@ -60,37 +62,17 @@ class CopilotPlatform:
             raise ValueError(f"Copilot CLI does not support {item_type}s")
         raise ValueError(f"Unknown item type: {item_type}")
 
-    def validate_agent(self, content: str) -> list[str]:
-        """Validate agent content for Copilot CLI format.
+    def get_required_fields(self) -> list[str]:
+        """Copilot requires both 'name' and 'tools' fields."""
+        return ["name:", "tools:"]
 
-        Args:
-            content: Agent file content.
-
-        Returns:
-            List of validation errors (empty if valid).
-        """
-        errors = []
-
-        # Check for frontmatter
-        if not content.startswith("---"):
-            errors.append("Agent must have YAML frontmatter")
-            return errors
-
-        # Parse frontmatter
-        try:
-            end_idx = content.index("---", 3)
-            frontmatter = content[3:end_idx].strip()
-        except ValueError:
-            errors.append("Invalid frontmatter: missing closing ---")
-            return errors
-
-        # Check required fields for Copilot
-        if "name:" not in frontmatter:
-            errors.append("Copilot agents must include 'name' field")
-        if "tools:" not in frontmatter:
-            errors.append("Copilot agents must include 'tools' field")
-
-        return errors
+    def get_field_error_message(self, field: str) -> str:
+        """Provide Copilot-specific error messages."""
+        if field == "name:":
+            return "Copilot agents must include 'name' field"
+        if field == "tools:":
+            return "Copilot agents must include 'tools' field"
+        return super().get_field_error_message(field)
 
     def is_available(self) -> bool:
         """Check if Copilot CLI is available on this system.
@@ -105,3 +87,26 @@ class CopilotPlatform:
         # Linux/macOS
         gh_path = Path.home() / ".local" / "share" / "gh" / "extensions"
         return (gh_path / "gh-copilot").exists()
+
+    def get_project_install_path(
+        self, project_root: Path, item_type: str, name: str
+    ) -> Path:
+        """Get the project-local installation path for an item.
+
+        Args:
+            project_root: Root directory of the project.
+            item_type: Type of item (agent only for Copilot).
+            name: Name of the item.
+
+        Returns:
+            Full path where item should be installed.
+
+        Raises:
+            ValueError: If item type is not supported.
+        """
+        base = project_root / ".github" / "copilot"
+        if item_type == "agent":
+            return base / "agents" / f"{name}{self.agent_extension}"
+        if item_type in ("skill", "command"):
+            raise ValueError(f"Copilot CLI does not support {item_type}s")
+        raise ValueError(f"Unknown item type: {item_type}")

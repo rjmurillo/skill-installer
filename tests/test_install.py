@@ -9,7 +9,7 @@ import pytest
 
 from skill_installer.discovery import DiscoveredItem
 from skill_installer.gitops import GitOps
-from skill_installer.install import Installer, InstallResult
+from skill_installer.install import Installer, InstallResult, get_project_root
 from skill_installer.registry import RegistryManager
 
 
@@ -307,3 +307,126 @@ model: sonnet
         if result.success:
             installed_content = result.installed_path.read_text()
             assert "tools:" in installed_content
+
+
+class TestGetProjectRoot:
+    """Tests for get_project_root function."""
+
+    def test_finds_git_directory(self, tmp_path: Path) -> None:
+        """Test finding a .git directory."""
+        # Create a git repo structure
+        git_dir = tmp_path / ".git"
+        git_dir.mkdir()
+        subdir = tmp_path / "src" / "module"
+        subdir.mkdir(parents=True)
+
+        # From project root
+        result = get_project_root(tmp_path)
+        assert result == tmp_path
+
+        # From subdirectory
+        result = get_project_root(subdir)
+        assert result == tmp_path
+
+    def test_returns_none_when_not_in_repo(self, tmp_path: Path) -> None:
+        """Test returning None when not in a git repo."""
+        # Create a directory without .git
+        subdir = tmp_path / "not_a_repo" / "subdir"
+        subdir.mkdir(parents=True)
+
+        result = get_project_root(subdir)
+        assert result is None
+
+    def test_uses_cwd_when_no_start_path(self) -> None:
+        """Test using current working directory when no start_path provided."""
+        # This test runs in the skill-installer repo, so it should find the .git
+        result = get_project_root()
+        assert result is not None
+        assert (result / ".git").exists()
+
+    def test_handles_nested_git_repos(self, tmp_path: Path) -> None:
+        """Test that we find the nearest .git, not a parent repo."""
+        # Create outer repo
+        outer_git = tmp_path / ".git"
+        outer_git.mkdir()
+
+        # Create inner repo
+        inner = tmp_path / "subproject"
+        inner_git = inner / ".git"
+        inner_git.mkdir(parents=True)
+
+        # Create subdir in inner repo
+        inner_subdir = inner / "src"
+        inner_subdir.mkdir()
+
+        # From inner subdir, should find inner .git
+        result = get_project_root(inner_subdir)
+        assert result == inner
+
+
+class TestProjectScopeInstallation:
+    """Tests for project-scope installation."""
+
+    def test_install_agent_to_project_scope(
+        self,
+        installer: Installer,
+        sample_agent: DiscoveredItem,
+        tmp_path: Path,
+    ) -> None:
+        """Test installing an agent with project scope."""
+        project_root = tmp_path / "my_project"
+        project_root.mkdir()
+
+        result = installer.install_item(
+            sample_agent,
+            "source",
+            "claude",
+            scope="project",
+            project_root=project_root,
+        )
+
+        assert result.success is True
+        assert result.installed_path is not None
+        # Verify path is under project's .claude directory
+        assert str(result.installed_path).startswith(str(project_root / ".claude"))
+
+    def test_install_skill_to_project_scope(
+        self,
+        installer: Installer,
+        sample_skill: DiscoveredItem,
+        tmp_path: Path,
+    ) -> None:
+        """Test installing a skill with project scope."""
+        project_root = tmp_path / "my_project"
+        project_root.mkdir()
+
+        result = installer.install_item(
+            sample_skill,
+            "source",
+            "claude",
+            scope="project",
+            project_root=project_root,
+        )
+
+        assert result.success is True
+        assert result.installed_path is not None
+        # Verify path is under project's .claude/skills directory
+        expected_path = project_root / ".claude" / "skills" / "github"
+        assert result.installed_path == expected_path
+
+    def test_project_scope_requires_project_root(
+        self,
+        installer: Installer,
+        sample_agent: DiscoveredItem,
+    ) -> None:
+        """Test that project scope fails without project_root."""
+        result = installer.install_item(
+            sample_agent,
+            "source",
+            "claude",
+            scope="project",
+            project_root=None,
+        )
+
+        assert result.success is False
+        assert "project_root is required" in result.error

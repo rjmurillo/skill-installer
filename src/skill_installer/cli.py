@@ -2,17 +2,21 @@
 
 from __future__ import annotations
 
-from typing import Annotated
+from pathlib import Path
+from typing import TYPE_CHECKING, Annotated
+
+if TYPE_CHECKING:
+    from skill_installer.context import AppContext
+    from skill_installer.discovery import DiscoveredItem
+    from skill_installer.registry import Source
 
 import typer
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
 from skill_installer import __version__
-from skill_installer.discovery import Discovery
-from skill_installer.gitops import GitOps, GitOpsError
-from skill_installer.install import Installer
-from skill_installer.registry import RegistryManager
+from skill_installer.context import create_context
+from skill_installer.gitops import GitOpsError
 from skill_installer.tui import TUI, SkillInstallerApp
 
 app = typer.Typer(
@@ -60,6 +64,41 @@ def main(
 # ============================================================================
 
 
+def _parse_platforms(platforms_arg: str | None) -> list[str]:
+    """Parse comma-separated platform string into list."""
+    if not platforms_arg:
+        return ["claude", "vscode"]
+    return [p.strip() for p in platforms_arg.split(",")]
+
+
+def _register_source(
+    ctx: AppContext, url: str, name: str | None, ref: str, platforms: list[str]
+) -> Source:
+    """Register source in registry."""
+    source = ctx.registry.add_source(url, name, ref, platforms)
+    tui.show_success(f"Added source '{source.name}'")
+    return source
+
+
+def _sync_source(ctx: AppContext, source: Source) -> None:
+    """Clone or fetch source repository."""
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        console=console,
+    ) as progress:
+        progress.add_task(f"Cloning {source.name}...", total=None)
+        ctx.gitops.clone_or_fetch(source.url, source.name, source.ref)
+    ctx.registry.update_source_sync_time(source.name)
+
+
+def _extract_license(ctx: AppContext, source: Source) -> None:
+    """Extract and store license from source repository."""
+    license_text = ctx.gitops.get_license(source.name)
+    if license_text:
+        ctx.registry.update_source_license(source.name, license_text)
+
+
 @source_app.command("add")
 def source_add(
     url: Annotated[str, typer.Argument(help="Repository URL")],
@@ -68,31 +107,17 @@ def source_add(
     platforms: Annotated[
         str | None, typer.Option("--platforms", "-p", help="Target platforms (comma-separated)")
     ] = None,
+    _context=None,
 ) -> None:
     """Add a source repository."""
-    registry = RegistryManager()
-    gitops = GitOps()
-
-    # Parse platforms
-    platform_list = platforms.split(",") if platforms else ["claude", "vscode"]
-    platform_list = [p.strip() for p in platform_list]
+    ctx = _context or create_context()
+    platform_list = _parse_platforms(platforms)
 
     try:
-        source = registry.add_source(url, name, ref, platform_list)
-        tui.show_success(f"Added source '{source.name}'")
-
-        # Clone repository
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            console=console,
-        ) as progress:
-            progress.add_task(f"Cloning {source.name}...", total=None)
-            gitops.clone_or_fetch(source.url, source.name, source.ref)
-
-        registry.update_source_sync_time(source.name)
+        source = _register_source(ctx, url, name, ref, platform_list)
+        _sync_source(ctx, source)
+        _extract_license(ctx, source)
         tui.show_success(f"Cloned and synced '{source.name}'")
-
     except ValueError as e:
         tui.show_error(str(e))
         raise typer.Exit(1) from e
@@ -104,13 +129,13 @@ def source_add(
 @source_app.command("remove")
 def source_remove(
     name: Annotated[str, typer.Argument(help="Source name")],
+    _context=None,
 ) -> None:
     """Remove a source repository."""
-    registry = RegistryManager()
-    gitops = GitOps()
+    ctx = _context or create_context()
 
-    if registry.remove_source(name):
-        gitops.remove_cached(name)
+    if ctx.registry.remove_source(name):
+        ctx.gitops.remove_cached(name)
         tui.show_success(f"Removed source '{name}'")
     else:
         tui.show_error(f"Source '{name}' not found")
@@ -118,47 +143,179 @@ def source_remove(
 
 
 @source_app.command("list")
-def source_list() -> None:
+def source_list(
+    _context=None,
+) -> None:
     """List configured sources."""
-    registry = RegistryManager()
-    sources = registry.list_sources()
+    ctx = _context or create_context()
+    sources = ctx.registry.list_sources()
     tui.show_sources(sources)
+
+
+def _get_sources_to_update(ctx: AppContext, name: str | None) -> list[Source]:
+    """Get list of sources to update.
+
+    Args:
+        ctx: Application context.
+        name: Optional source name filter.
+
+    Returns:
+        List of sources to update.
+
+    Raises:
+        typer.Exit: If specified source not found.
+    """
+    sources = ctx.registry.list_sources()
+    if not name:
+        return sources
+    filtered = [s for s in sources if s.name == name]
+    if not filtered:
+        tui.show_error(f"Source '{name}' not found")
+        raise typer.Exit(1)
+    return filtered
+
+
+def _update_single_source(ctx: AppContext, source: Source) -> bool:
+    """Update a single source repository.
+
+    Args:
+        ctx: Application context.
+        source: Source to update.
+
+    Returns:
+        True if successful, False otherwise.
+    """
+    try:
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console,
+        ) as progress:
+            progress.add_task(f"Updating {source.name}...", total=None)
+            ctx.gitops.clone_or_fetch(source.url, source.name, source.ref)
+
+        ctx.registry.update_source_sync_time(source.name)
+        tui.show_success(f"Updated '{source.name}'")
+        return True
+    except GitOpsError as e:
+        tui.show_error(f"Failed to update '{source.name}': {e}")
+        return False
 
 
 @source_app.command("update")
 def source_update(
     name: Annotated[str | None, typer.Argument(help="Source name (all if not specified)")] = None,
+    _context=None,
 ) -> None:
     """Update source repositories."""
-    registry = RegistryManager()
-    gitops = GitOps()
-
-    sources = registry.list_sources()
-    if name:
-        sources = [s for s in sources if s.name == name]
-        if not sources:
-            tui.show_error(f"Source '{name}' not found")
-            raise typer.Exit(1)
-
+    ctx = _context or create_context()
+    sources = _get_sources_to_update(ctx, name)
     for source in sources:
-        try:
-            with Progress(
-                SpinnerColumn(),
-                TextColumn("[progress.description]{task.description}"),
-                console=console,
-            ) as progress:
-                progress.add_task(f"Updating {source.name}...", total=None)
-                gitops.clone_or_fetch(source.url, source.name, source.ref)
-
-            registry.update_source_sync_time(source.name)
-            tui.show_success(f"Updated '{source.name}'")
-        except GitOpsError as e:
-            tui.show_error(f"Failed to update '{source.name}': {e}")
+        _update_single_source(ctx, source)
 
 
 # ============================================================================
 # Install Commands
 # ============================================================================
+
+
+def _parse_item_id(item: str) -> tuple[str, str | None, str]:
+    """Parse item ID into components.
+
+    Args:
+        item: Item ID in format source/name or source/type/name.
+
+    Returns:
+        Tuple of (source_name, item_type, item_name).
+
+    Raises:
+        typer.Exit: If format is invalid.
+    """
+    parts = item.split("/")
+    if len(parts) < 2:
+        tui.show_error("Invalid item format. Use: source/name or source/type/name")
+        raise typer.Exit(1)
+    source_name = parts[0]
+    item_name = parts[-1]
+    item_type = parts[1] if len(parts) == 3 else None
+    return source_name, item_type, item_name
+
+
+def _ensure_source_synced(ctx: AppContext, source: Source) -> Path:
+    """Ensure source is synced and return repo path.
+
+    Args:
+        ctx: Application context.
+        source: Source to sync.
+
+    Returns:
+        Path to repository.
+    """
+    repo_path = ctx.gitops.get_repo_path(source.name)
+    if not repo_path.exists():
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console,
+        ) as progress:
+            progress.add_task(f"Syncing {source.name}...", total=None)
+            ctx.gitops.clone_or_fetch(source.url, source.name, source.ref)
+    return repo_path
+
+
+def _find_item(
+    ctx: AppContext,
+    repo_path: Path,
+    item_name: str,
+    item_type: str | None,
+    filter_platform: str | None,
+) -> DiscoveredItem:
+    """Find a discovered item matching criteria.
+
+    Args:
+        ctx: Application context.
+        repo_path: Path to repository.
+        item_name: Name of item to find.
+        item_type: Optional type filter.
+        filter_platform: Optional platform filter.
+
+    Returns:
+        Matching DiscoveredItem.
+
+    Raises:
+        typer.Exit: If no match found.
+    """
+    items = ctx.discovery.discover_all(repo_path, filter_platform)
+    matches = [
+        i for i in items
+        if i.name == item_name and (item_type is None or i.item_type == item_type)
+    ]
+    if not matches:
+        tui.show_error(f"Item '{item_name}' not found")
+        raise typer.Exit(1)
+    return matches[0]
+
+
+def _install_to_platforms(
+    ctx: AppContext,
+    item: DiscoveredItem,
+    source_name: str,
+    target_platforms: list[str],
+) -> None:
+    """Install item to all target platforms.
+
+    Args:
+        ctx: Application context.
+        item: Item to install.
+        source_name: Source repository name.
+        target_platforms: List of target platforms.
+    """
+    for target_platform in target_platforms:
+        result = ctx.installer.install_item(item, source_name, target_platform)
+        if result.success:
+            tui.show_success(f"Installed {result.item_id} to {target_platform}")
+        else:
+            tui.show_error(f"Failed to install to {target_platform}: {result.error}")
 
 
 @app.command()
@@ -169,82 +326,38 @@ def install(
     platform: Annotated[
         str | None, typer.Option("--platform", "-p", help="Target platforms (comma-separated)")
     ] = None,
+    filter_platform: Annotated[
+        str | None, typer.Option("--filter", "-f", help="Filter items by platform compatibility")
+    ] = None,
+    _context=None,
 ) -> None:
     """Install skills/agents from sources."""
-    registry = RegistryManager()
-    gitops = GitOps()
-    discovery = Discovery()
-    installer = Installer(registry, gitops)
+    ctx = _context or create_context()
+    platforms = _parse_platforms(platform)
 
-    # Parse platforms
-    platforms = platform.split(",") if platform else None
-    if platforms:
-        platforms = [p.strip() for p in platforms]
-
-    # Interactive mode if no item specified
     if not item:
-        _interactive_install(registry, gitops, discovery, installer, platforms)
+        _interactive_install(ctx, platforms if platform else None, filter_platform)
         return
 
-    # Parse item ID (source/type/name or source/name)
-    parts = item.split("/")
-    if len(parts) < 2:
-        tui.show_error("Invalid item format. Use: source/name or source/type/name")
-        raise typer.Exit(1)
-
-    source_name = parts[0]
-    source = registry.get_source(source_name)
+    source_name, item_type, item_name = _parse_item_id(item)
+    source = ctx.registry.get_source(source_name)
     if not source:
         tui.show_error(f"Source '{source_name}' not found")
         raise typer.Exit(1)
 
-    # Ensure source is synced
-    repo_path = gitops.get_repo_path(source_name)
-    if not repo_path.exists():
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            console=console,
-        ) as progress:
-            progress.add_task(f"Syncing {source_name}...", total=None)
-            gitops.clone_or_fetch(source.url, source_name, source.ref)
-
-    # Discover items
-    items = discovery.discover_all(repo_path)
-
-    # Find matching item
-    item_name = parts[-1]
-    item_type = parts[1] if len(parts) == 3 else None
-
-    matches = [
-        i for i in items
-        if i.name == item_name and (item_type is None or i.item_type == item_type)
-    ]
-
-    if not matches:
-        tui.show_error(f"Item '{item}' not found in source '{source_name}'")
-        raise typer.Exit(1)
-
-    discovered_item = matches[0]
-    target_platforms = platforms or source.platforms
-
-    for target_platform in target_platforms:
-        result = installer.install_item(discovered_item, source_name, target_platform)
-        if result.success:
-            tui.show_success(f"Installed {result.item_id} to {target_platform}")
-        else:
-            tui.show_error(f"Failed to install to {target_platform}: {result.error}")
+    repo_path = _ensure_source_synced(ctx, source)
+    discovered_item = _find_item(ctx, repo_path, item_name, item_type, filter_platform)
+    target_platforms = platforms if platform else source.platforms
+    _install_to_platforms(ctx, discovered_item, source_name, target_platforms)
 
 
 def _interactive_install(
-    registry: RegistryManager,
-    gitops: GitOps,
-    discovery: Discovery,
-    installer: Installer,
+    ctx: AppContext,
     platforms: list[str] | None,
+    filter_platform: str | None = None,
 ) -> None:
     """Interactive installation flow."""
-    sources = registry.list_sources()
+    sources = ctx.registry.list_sources()
     if not sources:
         tui.show_warning("No sources configured. Add a source first.")
         tui.show_info("Run: skill-installer source add <url>")
@@ -256,7 +369,7 @@ def _interactive_install(
         return
 
     # Ensure source is synced
-    repo_path = gitops.get_repo_path(source.name)
+    repo_path = ctx.gitops.get_repo_path(source.name)
     if not repo_path.exists():
         with Progress(
             SpinnerColumn(),
@@ -264,13 +377,13 @@ def _interactive_install(
             console=console,
         ) as progress:
             progress.add_task(f"Syncing {source.name}...", total=None)
-            gitops.clone_or_fetch(source.url, source.name, source.ref)
+            ctx.gitops.clone_or_fetch(source.url, source.name, source.ref)
 
     # Discover items
-    items = discovery.discover_all(repo_path)
+    items = ctx.discovery.discover_all(repo_path, filter_platform)
 
     # Get installed items
-    installed_items = registry.list_installed(source=source.name)
+    installed_items = ctx.registry.list_installed(source=source.name)
     installed_map: dict[str, list[str]] = {}
     for inst in installed_items:
         if inst.id not in installed_map:
@@ -288,7 +401,7 @@ def _interactive_install(
     # Install to platforms
     target_platforms = platforms or source.platforms
     for target_platform in target_platforms:
-        result = installer.install_item(item, source.name, target_platform)
+        result = ctx.installer.install_item(item, source.name, target_platform)
         if result.success:
             tui.show_success(f"Installed {result.item_id} to {target_platform}")
         else:
@@ -301,13 +414,12 @@ def uninstall(
     platform: Annotated[
         str | None, typer.Option("--platform", "-p", help="Platform to uninstall from")
     ] = None,
+    _context=None,
 ) -> None:
     """Uninstall a skill/agent."""
-    registry = RegistryManager()
-    gitops = GitOps()
-    installer = Installer(registry, gitops)
+    ctx = _context or create_context()
 
-    results = installer.uninstall_item(item, platform)
+    results = ctx.installer.uninstall_item(item, platform)
 
     if not results:
         tui.show_warning(f"Item '{item}' not found in installed items")
@@ -321,61 +433,66 @@ def uninstall(
 
 
 @app.command()
-def status() -> None:
+def status(
+    _context=None,
+) -> None:
     """Show installed items."""
-    registry = RegistryManager()
-    items = registry.list_installed()
+    ctx = _context or create_context()
+    items = ctx.registry.list_installed()
     tui.show_installed(items)
 
 
+def _sync_all_sources(ctx: AppContext) -> None:
+    """Sync all source repositories.
+
+    Args:
+        ctx: Application context.
+    """
+    for source in ctx.registry.list_sources():
+        _update_single_source(ctx, source)
+
+
+def _sync_installed_item(ctx: AppContext, item: any) -> None:
+    """Check and update a single installed item.
+
+    Args:
+        ctx: Application context.
+        item: Installed item to sync.
+    """
+    source = ctx.registry.get_source(item.source)
+    if not source:
+        tui.show_warning(f"Source '{item.source}' not found for {item.id}")
+        return
+
+    repo_path = ctx.gitops.get_repo_path(source.name)
+    items = ctx.discovery.discover_all(repo_path, None)
+
+    matches = [i for i in items if i.name == item.name and i.item_type == item.item_type]
+    if not matches:
+        tui.show_warning(f"Item {item.id} not found in source")
+        return
+
+    discovered = matches[0]
+    if not ctx.installer.check_update_needed(discovered, source.name, item.platform):
+        tui.show_info(f"{item.id} on {item.platform} is up to date")
+        return
+
+    result = ctx.installer.install_item(discovered, source.name, item.platform)
+    if result.success:
+        tui.show_success(f"Updated {item.id} on {item.platform}")
+    else:
+        tui.show_error(f"Failed to update {item.id}: {result.error}")
+
+
 @app.command()
-def sync() -> None:
+def sync(
+    _context=None,
+) -> None:
     """Sync all installed items from sources."""
-    registry = RegistryManager()
-    gitops = GitOps()
-    discovery = Discovery()
-    installer = Installer(registry, gitops)
-
-    # Update all sources
-    for source in registry.list_sources():
-        try:
-            with Progress(
-                SpinnerColumn(),
-                TextColumn("[progress.description]{task.description}"),
-                console=console,
-            ) as progress:
-                progress.add_task(f"Updating {source.name}...", total=None)
-                gitops.clone_or_fetch(source.url, source.name, source.ref)
-            registry.update_source_sync_time(source.name)
-        except GitOpsError as e:
-            tui.show_error(f"Failed to update '{source.name}': {e}")
-            continue
-
-    # Check and update installed items
-    for item in registry.list_installed():
-        source = registry.get_source(item.source)
-        if not source:
-            tui.show_warning(f"Source '{item.source}' not found for {item.id}")
-            continue
-
-        repo_path = gitops.get_repo_path(source.name)
-        items = discovery.discover_all(repo_path)
-
-        # Find matching item
-        matches = [i for i in items if i.name == item.name and i.item_type == item.item_type]
-        if not matches:
-            tui.show_warning(f"Item {item.id} not found in source")
-            continue
-
-        discovered = matches[0]
-        if installer.check_update_needed(discovered, source.name, item.platform):
-            result = installer.install_item(discovered, source.name, item.platform)
-            if result.success:
-                tui.show_success(f"Updated {item.id} on {item.platform}")
-            else:
-                tui.show_error(f"Failed to update {item.id}: {result.error}")
-        else:
-            tui.show_info(f"{item.id} on {item.platform} is up to date")
+    ctx = _context or create_context()
+    _sync_all_sources(ctx)
+    for item in ctx.registry.list_installed():
+        _sync_installed_item(ctx, item)
 
 
 # ============================================================================
@@ -384,13 +501,15 @@ def sync() -> None:
 
 
 @config_app.command("show")
-def config_show() -> None:
+def config_show(
+    _context=None,
+) -> None:
     """Show current configuration."""
-    registry = RegistryManager()
-    sources_registry = registry.load_sources()
+    ctx = _context or create_context()
+    sources_registry = ctx.registry.load_sources()
 
     console.print("\n[bold]Configuration[/bold]")
-    console.print(f"  Registry directory: {registry.registry_dir}")
+    console.print(f"  Registry directory: {ctx.registry.registry_dir}")
     console.print(f"  Default platforms: {', '.join(sources_registry.defaults.get('targetPlatforms', []))}")
 
 
@@ -398,14 +517,15 @@ def config_show() -> None:
 def config_set(
     key: Annotated[str, typer.Argument(help="Configuration key")],
     value: Annotated[str, typer.Argument(help="Configuration value")],
+    _context=None,
 ) -> None:
     """Set a configuration value."""
-    registry = RegistryManager()
-    sources_registry = registry.load_sources()
+    ctx = _context or create_context()
+    sources_registry = ctx.registry.load_sources()
 
     if key == "default-platforms":
         sources_registry.defaults["targetPlatforms"] = [p.strip() for p in value.split(",")]
-        registry.save_sources(sources_registry)
+        ctx.registry.save_sources(sources_registry)
         tui.show_success(f"Set {key} to {value}")
     else:
         tui.show_error(f"Unknown configuration key: {key}")
@@ -418,18 +538,17 @@ def config_set(
 
 
 @app.command("interactive")
-def interactive() -> None:
+def interactive(
+    _context=None,
+) -> None:
     """Run in interactive TUI mode."""
-    registry = RegistryManager()
-    gitops = GitOps()
-    discovery = Discovery()
-    installer = Installer(registry, gitops)
+    ctx = _context or create_context()
 
     tui_app = SkillInstallerApp(
-        registry_manager=registry,
-        gitops=gitops,
-        discovery=discovery,
-        installer=installer,
+        registry_manager=ctx.registry,
+        gitops=ctx.gitops,
+        discovery=ctx.discovery,
+        installer=ctx.installer,
     )
     tui_app.run()
 

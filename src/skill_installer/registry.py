@@ -52,7 +52,7 @@ class MarketplaceManifest(BaseModel):
     plugins: list[MarketplacePlugin] = Field(default_factory=list)
 
     @classmethod
-    def from_file(cls, path: Path) -> "MarketplaceManifest":
+    def from_file(cls, path: Path) -> MarketplaceManifest:
         """Load marketplace manifest from a JSON file.
 
         Args:
@@ -84,6 +84,8 @@ class Source(BaseModel):
     platforms: list[str] = Field(default_factory=lambda: ["claude", "vscode"])
     last_sync: datetime | None = Field(default=None, alias="lastSync")
     marketplace_enabled: bool = Field(default=False, alias="marketplaceEnabled")
+    license: str | None = None
+    auto_update: bool = Field(default=False, alias="autoUpdate")
 
 
 class SourceRegistry(BaseModel):
@@ -127,10 +129,36 @@ class RegistryManager:
 
         Args:
             registry_dir: Directory for registry files. Defaults to ~/.skill-installer.
+
+        Note:
+            Prefer using factory methods `create()` or `create_default()` for construction.
         """
         self.registry_dir = registry_dir or REGISTRY_DIR
         self.sources_file = self.registry_dir / "sources.json"
         self.installed_file = self.registry_dir / "installed.json"
+
+    @classmethod
+    def create(cls, registry_dir: Path) -> "RegistryManager":
+        """Create a registry manager with a custom directory.
+
+        Args:
+            registry_dir: Directory for registry files.
+
+        Returns:
+            Configured RegistryManager instance.
+        """
+        return cls(registry_dir=registry_dir)
+
+    @classmethod
+    def create_default(cls) -> "RegistryManager":
+        """Create a registry manager with the default directory.
+
+        Uses ~/.skill-installer as the registry location.
+
+        Returns:
+            RegistryManager configured with default paths.
+        """
+        return cls()
 
     def ensure_registry_dir(self) -> None:
         """Create registry directory if it doesn't exist."""
@@ -280,6 +308,57 @@ class RegistryManager:
                 source.last_sync = datetime.now(timezone.utc)
                 self.save_sources(registry)
                 break
+
+    def update_source_license(self, name: str, license_text: str | None) -> None:
+        """Update the license for a source.
+
+        Args:
+            name: Name of the source.
+            license_text: License text to store.
+        """
+        registry = self.load_sources()
+        for source in registry.sources:
+            if source.name == name:
+                source.license = license_text
+                self.save_sources(registry)
+                break
+
+    def toggle_source_auto_update(self, source_name: str) -> bool:
+        """Toggle auto_update flag for a source.
+
+        Args:
+            source_name: Name of the source.
+
+        Returns:
+            New auto_update value.
+        """
+        registry = self.load_sources()
+        for source in registry.sources:
+            if source.name == source_name:
+                source.auto_update = not source.auto_update
+                self.save_sources(registry)
+                return source.auto_update
+        return False
+
+    def get_stale_auto_update_sources(self, max_age_hours: int = 24) -> list[Source]:
+        """Get sources with auto_update enabled that haven't been synced recently.
+
+        Args:
+            max_age_hours: Maximum age in hours before source is considered stale.
+
+        Returns:
+            List of stale sources that need updating.
+        """
+        from datetime import timedelta
+
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=max_age_hours)
+        registry = self.load_sources()
+        stale = []
+        for source in registry.sources:
+            if source.auto_update:
+                if source.last_sync is None or source.last_sync < cutoff:
+                    stale.append(source)
+        return stale
 
     def add_installed(
         self,

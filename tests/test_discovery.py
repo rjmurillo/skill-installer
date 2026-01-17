@@ -85,7 +85,7 @@ class TestDiscovery:
 
     def test_discover_all(self, discovery: Discovery, sample_repo: Path) -> None:
         """Test discovering all items in a repository."""
-        items = discovery.discover_all(sample_repo)
+        items = discovery.discover_all(sample_repo, None)
 
         # Should find agents, skills, and commands
         agents = [i for i in items if i.item_type == "agent"]
@@ -355,7 +355,7 @@ class TestMarketplaceDiscovery:
         self, discovery: Discovery, marketplace_repo: Path
     ) -> None:
         """Test discover_all uses marketplace discovery when available."""
-        items = discovery.discover_all(marketplace_repo)
+        items = discovery.discover_all(marketplace_repo, None)
 
         # Should only find skills from marketplace (not auto-discover)
         assert len(items) == 2
@@ -381,3 +381,128 @@ class TestMarketplaceDiscovery:
 
         items = discovery.discover_from_marketplace(tmp_path)
         assert items == []
+
+
+class TestPlatformFiltering:
+    """Tests for platform filtering functionality."""
+
+    def test_filter_by_claude_platform(self, discovery: Discovery, sample_repo: Path) -> None:
+        """Test filtering items by Claude platform."""
+        items = discovery.discover_all(sample_repo, platform="claude")
+
+        # Should only find Claude-compatible items (agents with .md and skills)
+        assert all(
+            "claude" in item.platforms or item.platforms == ["claude"] for item in items
+        )
+
+        # Should include skills (they are Claude-only)
+        skills = [i for i in items if i.item_type == "skill"]
+        assert len(skills) > 0
+
+    def test_filter_by_vscode_platform(self, discovery: Discovery, sample_repo: Path) -> None:
+        """Test filtering items by VS Code platform."""
+        items = discovery.discover_all(sample_repo, platform="vscode")
+
+        # Should only find VS Code-compatible items (agents with .agent.md)
+        for item in items:
+            assert "vscode" in item.platforms or "vscode-insiders" in item.platforms
+
+        # VS Code agents should be present
+        agents = [i for i in items if i.item_type == "agent"]
+        assert len(agents) > 0
+
+    def test_filter_by_copilot_platform(self, discovery: Discovery, sample_repo: Path) -> None:
+        """Test filtering items by Copilot platform."""
+        items = discovery.discover_all(sample_repo, platform="copilot")
+
+        # Should only find Copilot-compatible items (agents with .agent.md)
+        for item in items:
+            assert "copilot" in item.platforms
+
+    def test_filter_by_vscode_insiders(self, discovery: Discovery, sample_repo: Path) -> None:
+        """Test filtering by vscode-insiders treats it as vscode."""
+        vscode_items = discovery.discover_all(sample_repo, platform="vscode")
+        insiders_items = discovery.discover_all(sample_repo, platform="vscode-insiders")
+
+        # Should return the same items
+        assert len(vscode_items) == len(insiders_items)
+        assert {i.name for i in vscode_items} == {i.name for i in insiders_items}
+
+    def test_filter_none_returns_all(
+        self, discovery: Discovery, sample_repo: Path
+    ) -> None:
+        """Test that passing None returns all items."""
+        all_items = discovery.discover_all(sample_repo, None)
+
+        # Should return all types
+        agents = [i for i in all_items if i.item_type == "agent"]
+        skills = [i for i in all_items if i.item_type == "skill"]
+        commands = [i for i in all_items if i.item_type == "command"]
+
+        assert len(agents) >= 1
+        assert len(skills) == 1
+        assert len(commands) == 1
+
+    def test_filter_by_platform_empty_result(
+        self, discovery: Discovery, tmp_path: Path
+    ) -> None:
+        """Test filtering returns empty list when no items match platform."""
+        # Create a repo with only Claude items
+        claude_dir = tmp_path / ".claude" / "skills" / "test"
+        claude_dir.mkdir(parents=True)
+        (claude_dir / "SKILL.md").write_text(
+            """---
+name: test
+description: Test skill
+---
+
+# Test Skill
+"""
+        )
+
+        # Filter for VS Code should return empty
+        items = discovery.discover_all(tmp_path, platform="vscode")
+        assert items == []
+
+    def test_filter_by_platform_helper(self, discovery: Discovery, tmp_path: Path) -> None:
+        """Test the _filter_by_platform helper method directly."""
+        # Create sample items with different platforms
+        items = [
+            DiscoveredItem(
+                name="claude-agent",
+                item_type="agent",
+                path=tmp_path / "claude.md",
+                platforms=["claude"],
+            ),
+            DiscoveredItem(
+                name="vscode-agent",
+                item_type="agent",
+                path=tmp_path / "vscode.agent.md",
+                platforms=["vscode", "copilot"],
+            ),
+            DiscoveredItem(
+                name="no-platform",
+                item_type="agent",
+                path=tmp_path / "none.md",
+                platforms=[],
+            ),
+        ]
+
+        # Filter for Claude
+        claude_items = discovery._filter_by_platform(items, "claude")
+        assert len(claude_items) == 1
+        assert claude_items[0].name == "claude-agent"
+
+        # Filter for VS Code
+        vscode_items = discovery._filter_by_platform(items, "vscode")
+        assert len(vscode_items) == 1
+        assert vscode_items[0].name == "vscode-agent"
+
+        # Filter for Copilot
+        copilot_items = discovery._filter_by_platform(items, "copilot")
+        assert len(copilot_items) == 1
+        assert copilot_items[0].name == "vscode-agent"
+
+        # Items with no platform info are excluded
+        all_filtered = claude_items + vscode_items
+        assert all(item.name != "no-platform" for item in all_filtered)

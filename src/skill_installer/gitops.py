@@ -30,8 +30,34 @@ class GitOps:
 
         Args:
             cache_dir: Directory for cloned repos. Defaults to ~/.skill-installer/cache.
+
+        Note:
+            Prefer using factory methods `create()` or `create_default()` for construction.
         """
         self.cache_dir = cache_dir or CACHE_DIR
+
+    @classmethod
+    def create(cls, cache_dir: Path) -> "GitOps":
+        """Create a git operations manager with a custom cache directory.
+
+        Args:
+            cache_dir: Directory for cloned repositories.
+
+        Returns:
+            Configured GitOps instance.
+        """
+        return cls(cache_dir=cache_dir)
+
+    @classmethod
+    def create_default(cls) -> "GitOps":
+        """Create a git operations manager with the default cache directory.
+
+        Uses ~/.skill-installer/cache as the cache location.
+
+        Returns:
+            GitOps configured with default paths.
+        """
+        return cls()
 
     def ensure_cache_dir(self) -> None:
         """Create cache directory if it doesn't exist."""
@@ -160,3 +186,55 @@ class GitOps:
             True if cached, False otherwise.
         """
         return self.get_repo_path(name).exists()
+
+    def get_license(self, name: str) -> str | None:
+        """Extract license information from a cached repository.
+
+        Looks for common LICENSE file patterns (LICENSE, LICENSE.md, LICENSE.txt, etc.)
+        and returns the first line or SPDX identifier if found.
+
+        Args:
+            name: Name of the source.
+
+        Returns:
+            License string if found, None otherwise.
+        """
+        repo_path = self.get_repo_path(name)
+        if not repo_path.exists():
+            return None
+
+        license_patterns = [
+            "LICENSE",
+            "LICENSE.md",
+            "LICENSE.txt",
+            "LICENCE",
+            "LICENCE.md",
+            "LICENCE.txt",
+            "COPYING",
+            "COPYING.md",
+            "COPYING.txt",
+        ]
+
+        for pattern in license_patterns:
+            license_file = repo_path / pattern
+            if license_file.exists() and license_file.is_file():
+                try:
+                    content = license_file.read_text(encoding="utf-8", errors="ignore")
+                    lines = [line.strip() for line in content.split("\n") if line.strip()]
+                    if lines:
+                        first_line = lines[0]
+                        if len(first_line) > 100:
+                            if "MIT" in first_line.upper():
+                                return "MIT"
+                            if "APACHE" in first_line.upper():
+                                return "Apache-2.0"
+                            if "GPL" in first_line.upper():
+                                return "GPL"
+                            if "BSD" in first_line.upper():
+                                return "BSD"
+                            return first_line[:100] + "..."
+                        return first_line
+                except Exception:
+                    continue
+
+        return None

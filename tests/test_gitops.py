@@ -148,6 +148,76 @@ class TestGitOps:
         with pytest.raises(GitOpsError, match="Git operation failed"):
             temp_gitops.clone_or_fetch("https://github.com/test/repo", "test", "main")
 
+    def test_get_license_not_cached(self, temp_gitops: GitOps) -> None:
+        """Test getting license from non-existent repo."""
+        license_text = temp_gitops.get_license("nonexistent")
+        assert license_text is None
+
+    def test_get_license_mit(self, temp_gitops: GitOps, tmp_path: Path) -> None:
+        """Test extracting MIT license."""
+        repo_path = temp_gitops.cache_dir / "test-repo"
+        repo_path.mkdir(parents=True)
+
+        license_file = repo_path / "LICENSE"
+        license_file.write_text("MIT License\n\nCopyright (c) 2024 Test")
+
+        license_text = temp_gitops.get_license("test-repo")
+        assert license_text == "MIT License"
+
+    def test_get_license_apache(self, temp_gitops: GitOps, tmp_path: Path) -> None:
+        """Test extracting Apache license."""
+        repo_path = temp_gitops.cache_dir / "test-repo"
+        repo_path.mkdir(parents=True)
+
+        license_file = repo_path / "LICENSE.md"
+        license_file.write_text("Apache License 2.0\n\nSome more text")
+
+        license_text = temp_gitops.get_license("test-repo")
+        assert license_text == "Apache License 2.0"
+
+    def test_get_license_long_first_line(self, temp_gitops: GitOps, tmp_path: Path) -> None:
+        """Test extracting license with very long first line containing MIT."""
+        repo_path = temp_gitops.cache_dir / "test-repo"
+        repo_path.mkdir(parents=True)
+
+        license_file = repo_path / "LICENSE.txt"
+        long_line = "This is a very long license text that contains the word MIT but is longer than 100 characters and should be truncated"
+        license_file.write_text(long_line)
+
+        license_text = temp_gitops.get_license("test-repo")
+        assert license_text == "MIT"
+
+    def test_get_license_no_file(self, temp_gitops: GitOps, tmp_path: Path) -> None:
+        """Test when no license file exists."""
+        repo_path = temp_gitops.cache_dir / "test-repo"
+        repo_path.mkdir(parents=True)
+
+        license_text = temp_gitops.get_license("test-repo")
+        assert license_text is None
+
+    def test_get_license_empty_file(self, temp_gitops: GitOps, tmp_path: Path) -> None:
+        """Test when license file is empty."""
+        repo_path = temp_gitops.cache_dir / "test-repo"
+        repo_path.mkdir(parents=True)
+
+        license_file = repo_path / "LICENSE"
+        license_file.write_text("")
+
+        license_text = temp_gitops.get_license("test-repo")
+        assert license_text is None
+
+    def test_get_license_various_patterns(self, temp_gitops: GitOps, tmp_path: Path) -> None:
+        """Test various license file patterns."""
+        repo_path = temp_gitops.cache_dir / "test-repo"
+        repo_path.mkdir(parents=True)
+
+        # Test LICENCE (British spelling)
+        license_file = repo_path / "LICENCE"
+        license_file.write_text("BSD 3-Clause License")
+
+        license_text = temp_gitops.get_license("test-repo")
+        assert license_text == "BSD 3-Clause License"
+
 
 class TestGitOpsError:
     """Tests for GitOpsError exception."""

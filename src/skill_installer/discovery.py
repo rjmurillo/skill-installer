@@ -37,8 +37,21 @@ class Discovery:
     SKIP_FILES = {"README.md", "CHANGELOG.md", "CONTRIBUTING.md", "LICENSE.md", "SECURITY.md"}
 
     def __init__(self) -> None:
-        """Initialize discovery."""
+        """Initialize discovery.
+
+        Note:
+            Prefer using factory method `create()` for construction.
+        """
         pass
+
+    @classmethod
+    def create(cls) -> "Discovery":
+        """Create a discovery instance.
+
+        Returns:
+            Configured Discovery instance.
+        """
+        return cls()
 
     def is_marketplace_repo(self, repo_path: Path) -> bool:
         """Check if a repository is marketplace-enabled.
@@ -96,7 +109,7 @@ class Discovery:
 
         return items
 
-    def discover_all(self, repo_path: Path) -> list[DiscoveredItem]:
+    def discover_all(self, repo_path: Path, platform: str | None) -> list[DiscoveredItem]:
         """Discover all items in a repository.
 
         For marketplace-enabled repos, uses the marketplace manifest.
@@ -107,26 +120,21 @@ class Discovery:
 
         Args:
             repo_path: Path to the repository root.
+            platform: Platform filter (claude, vscode, vscode-insiders, copilot) or None for all.
 
         Returns:
-            List of discovered items.
+            List of discovered items, filtered by platform if specified.
         """
         # Check if this is a marketplace repo first
         if self.is_marketplace_repo(repo_path):
-            return self.discover_from_marketplace(repo_path)
+            items = self.discover_from_marketplace(repo_path)
+        else:
+            items: list[DiscoveredItem] = []
+            items.extend(self._auto_discover_agents(repo_path))
+            items.extend(self._auto_discover_skills(repo_path))
+            items.extend(self._auto_discover_commands(repo_path))
 
-        items: list[DiscoveredItem] = []
-
-        # Auto-discover agents
-        items.extend(self._auto_discover_agents(repo_path))
-
-        # Auto-discover skills
-        items.extend(self._auto_discover_skills(repo_path))
-
-        # Auto-discover commands
-        items.extend(self._auto_discover_commands(repo_path))
-
-        return items
+        return self._filter_by_platform(items, platform) if platform else items
 
     def _auto_discover_agents(self, repo_path: Path) -> list[DiscoveredItem]:
         """Auto-discover agents by searching for agent files.
@@ -352,6 +360,24 @@ class Discovery:
             return yaml.safe_load(frontmatter_str) or {}
         except (ValueError, yaml.YAMLError):
             return {}
+
+    def _filter_by_platform(self, items: list[DiscoveredItem], platform: str) -> list[DiscoveredItem]:
+        """Filter discovered items by platform compatibility.
+
+        Args:
+            items: List of discovered items to filter.
+            platform: Platform identifier (claude, vscode, vscode-insiders, copilot).
+
+        Returns:
+            Filtered list of items compatible with the specified platform.
+        """
+        normalized = "vscode" if platform == "vscode-insiders" else platform
+        return [
+            item for item in items
+            if item.platforms and normalized in [
+                "vscode" if p == "vscode-insiders" else p for p in item.platforms
+            ]
+        ]
 
     def get_item_content(self, item: DiscoveredItem) -> str:
         """Get the content of a discovered item.

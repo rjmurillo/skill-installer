@@ -174,6 +174,23 @@ class TestRegistryManager:
         assert source is not None
         assert source.last_sync is not None
 
+    def test_update_source_license(self, temp_registry: RegistryManager) -> None:
+        """Test updating source license."""
+        temp_registry.add_source("https://github.com/test/repo", "test-source")
+
+        temp_registry.update_source_license("test-source", "MIT")
+
+        source = temp_registry.get_source("test-source")
+        assert source is not None
+        assert source.license == "MIT"
+
+    def test_update_source_license_not_found(self, temp_registry: RegistryManager) -> None:
+        """Test updating license for non-existent source."""
+        temp_registry.update_source_license("nonexistent", "MIT")
+
+        source = temp_registry.get_source("nonexistent")
+        assert source is None
+
     def test_add_installed(self, temp_registry: RegistryManager) -> None:
         """Test adding an installed item."""
         item = temp_registry.add_installed(
@@ -370,3 +387,118 @@ class TestSourceMarketplace:
             marketplace_enabled=True,
         )
         assert source.marketplace_enabled is True
+
+
+class TestSourceAutoUpdate:
+    """Tests for Source auto_update field."""
+
+    def test_source_auto_update_default(self) -> None:
+        """Test Source auto_update defaults to False."""
+        source = Source(name="test", url="https://github.com/test/repo")
+        assert source.auto_update is False
+
+    def test_source_auto_update_enabled(self) -> None:
+        """Test Source with auto_update set to True."""
+        source = Source(
+            name="skills",
+            url="https://github.com/anthropics/skills",
+            auto_update=True,
+        )
+        assert source.auto_update is True
+
+
+class TestToggleSourceAutoUpdate:
+    """Tests for RegistryManager.toggle_source_auto_update()."""
+
+    def test_toggle_auto_update_enables(self, temp_registry: RegistryManager) -> None:
+        """Test toggling auto_update from False to True."""
+        temp_registry.add_source("https://github.com/test/repo", "test")
+        result = temp_registry.toggle_source_auto_update("test")
+        assert result is True
+        source = temp_registry.get_source("test")
+        assert source is not None
+        assert source.auto_update is True
+
+    def test_toggle_auto_update_disables(self, temp_registry: RegistryManager) -> None:
+        """Test toggling auto_update from True to False."""
+        temp_registry.add_source("https://github.com/test/repo", "test")
+        temp_registry.toggle_source_auto_update("test")  # Enable
+        result = temp_registry.toggle_source_auto_update("test")  # Disable
+        assert result is False
+        source = temp_registry.get_source("test")
+        assert source is not None
+        assert source.auto_update is False
+
+    def test_toggle_auto_update_nonexistent_source(self, temp_registry: RegistryManager) -> None:
+        """Test toggling auto_update for non-existent source returns False."""
+        result = temp_registry.toggle_source_auto_update("nonexistent")
+        assert result is False
+
+    def test_toggle_auto_update_persists(self, temp_registry: RegistryManager) -> None:
+        """Test that auto_update state persists after reload."""
+        temp_registry.add_source("https://github.com/test/repo", "test")
+        temp_registry.toggle_source_auto_update("test")
+
+        # Create new manager pointing to same directory
+        new_manager = RegistryManager(registry_dir=temp_registry.registry_dir)
+        source = new_manager.get_source("test")
+        assert source is not None
+        assert source.auto_update is True
+
+
+class TestGetStaleAutoUpdateSources:
+    """Tests for RegistryManager.get_stale_auto_update_sources()."""
+
+    def test_stale_sources_never_synced(self, temp_registry: RegistryManager) -> None:
+        """Test sources with auto_update but never synced are stale."""
+        temp_registry.add_source("https://github.com/test/repo", "test")
+        temp_registry.toggle_source_auto_update("test")
+
+        stale = temp_registry.get_stale_auto_update_sources()
+        assert len(stale) == 1
+        assert stale[0].name == "test"
+
+    def test_stale_sources_excludes_recently_synced(self, temp_registry: RegistryManager) -> None:
+        """Test recently synced sources are not stale."""
+        temp_registry.add_source("https://github.com/test/repo", "test")
+        temp_registry.toggle_source_auto_update("test")
+        temp_registry.update_source_sync_time("test")
+
+        stale = temp_registry.get_stale_auto_update_sources()
+        assert len(stale) == 0
+
+    def test_stale_sources_excludes_auto_update_disabled(self, temp_registry: RegistryManager) -> None:
+        """Test sources with auto_update disabled are not stale."""
+        temp_registry.add_source("https://github.com/test/repo", "test")
+        # auto_update defaults to False
+
+        stale = temp_registry.get_stale_auto_update_sources()
+        assert len(stale) == 0
+
+    def test_stale_sources_respects_max_age(self, temp_registry: RegistryManager) -> None:
+        """Test stale detection respects max_age_hours parameter."""
+        temp_registry.add_source("https://github.com/test/repo", "test")
+        temp_registry.toggle_source_auto_update("test")
+        temp_registry.update_source_sync_time("test")
+
+        # With 0 hours max age, source synced now should be stale
+        stale = temp_registry.get_stale_auto_update_sources(max_age_hours=0)
+        assert len(stale) == 1
+
+    def test_stale_sources_old_sync(self, temp_registry: RegistryManager) -> None:
+        """Test sources with old sync time are stale."""
+        from datetime import timedelta
+
+        temp_registry.add_source("https://github.com/test/repo", "test")
+        temp_registry.toggle_source_auto_update("test")
+
+        # Manually set last_sync to 48 hours ago
+        registry = temp_registry.load_sources()
+        for source in registry.sources:
+            if source.name == "test":
+                source.last_sync = datetime.now(timezone.utc) - timedelta(hours=48)
+        temp_registry.save_sources(registry)
+
+        stale = temp_registry.get_stale_auto_update_sources(max_age_hours=24)
+        assert len(stale) == 1
+        assert stale[0].name == "test"
