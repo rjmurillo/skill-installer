@@ -107,9 +107,14 @@ class VSCodePlatform(BasePlatform):
             if self.insiders:
                 program_files = Path("C:/Program Files/Microsoft VS Code Insiders")
             return program_files.exists()
-        # Linux: check if code command exists
+        # Linux: check if code command exists in common locations
         code_cmd = "code-insiders" if self.insiders else "code"
-        return (Path("/usr/bin") / code_cmd).exists()
+        search_paths = [
+            Path("/usr/bin") / code_cmd,
+            Path("/usr/local/bin") / code_cmd,
+            Path("/snap/bin") / code_cmd,
+        ]
+        return any(p.exists() for p in search_paths)
 
     def get_project_install_path(
         self, project_root: Path, item_type: str, name: str
