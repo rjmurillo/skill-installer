@@ -100,7 +100,7 @@ git clone https://github.com/rjmurillo/skill-installer
 cd skill-installer
 
 # Install with uv
-uv sync --dev
+uv sync --extra dev
 
 # Run tests
 uv run pytest
