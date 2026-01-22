@@ -8,7 +8,6 @@ from pathlib import Path
 from skill_installer.discovery import DiscoveredItem
 from skill_installer.filesystem import RealFileSystem
 from skill_installer.gitops import GitOps
-
 from skill_installer.platforms import get_platform
 from skill_installer.protocols import FileSystem
 from skill_installer.registry import RegistryManager
@@ -51,7 +50,7 @@ class Installer:
         self,
         registry: RegistryManager,
         gitops: GitOps,
-        transformer: "TransformEngine",
+        transformer: TransformEngine,
         filesystem: FileSystem,
     ) -> None:
         """Initialize installer with required dependencies.
@@ -76,7 +75,7 @@ class Installer:
         cls,
         registry: RegistryManager,
         gitops: GitOps,
-        transformer: "TransformEngine" | None = None,
+        transformer: TransformEngine | None = None,
         filesystem: FileSystem | None = None,
     ) -> Installer:
         """Factory method for production instantiation.

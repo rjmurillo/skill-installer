@@ -6,12 +6,12 @@ import json
 import logging
 from typing import TYPE_CHECKING, Any
 
-logger = logging.getLogger(__name__)
-
 from skill_installer.tui.models import DisplayItem, DisplaySource
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 class DataManager:

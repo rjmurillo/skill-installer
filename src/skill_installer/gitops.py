@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import hashlib
-import ssl
 import logging
 import re
 import shutil
+import ssl
 import urllib.request
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -47,7 +47,7 @@ class GitOps:
         self.cache_dir = cache_dir or CACHE_DIR
 
     @classmethod
-    def create(cls, cache_dir: Path) -> "GitOps":
+    def create(cls, cache_dir: Path) -> GitOps:
         """Create a git operations manager with a custom cache directory.
 
         Args:
@@ -59,7 +59,7 @@ class GitOps:
         return cls(cache_dir=cache_dir)
 
     @classmethod
-    def create_default(cls) -> "GitOps":
+    def create_default(cls) -> GitOps:
         """Create a git operations manager with the default cache directory.
 
         Uses ~/.skill-installer/cache as the cache location.

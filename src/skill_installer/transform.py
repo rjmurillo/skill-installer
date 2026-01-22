@@ -14,8 +14,6 @@ from abc import ABC, abstractmethod
 
 import yaml
 
-from skill_installer.protocols import TransformStrategy
-
 
 class BaseTransformStrategy(ABC):
     """Base class for transformation strategies.

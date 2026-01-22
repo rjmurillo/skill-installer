@@ -1,8 +1,10 @@
 """Tests for context module."""
 
 from __future__ import annotations
+
 from pathlib import Path
 from unittest.mock import MagicMock
+
 from skill_installer.context import AppContext, create_context
 
 

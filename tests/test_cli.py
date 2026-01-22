@@ -17,8 +17,8 @@ import typer
 from skill_installer import cli
 from skill_installer.context import AppContext
 from skill_installer.discovery import DiscoveredItem
-from skill_installer.types import InstallResult
 from skill_installer.registry import InstalledItem, Source
+from skill_installer.types import InstallResult
 
 
 @pytest.fixture
