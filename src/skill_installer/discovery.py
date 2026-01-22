@@ -66,7 +66,7 @@ class Discovery:
         pass
 
     @classmethod
-    def create(cls) -> "Discovery":
+    def create(cls) -> Discovery:
         """Create a discovery instance.
 
         Returns:
