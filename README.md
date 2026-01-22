@@ -209,7 +209,7 @@ cd skill-installer
 # Install with uv
 uv sync --extra dev
 
-# Set up git hooks (Bandit pre-commit, CodeQL pre-push)
+# Set up git hooks (Bandit + pytest pre-commit, CodeQL pre-push)
 git config core.hooksPath .githooks
 
 # Run tests
