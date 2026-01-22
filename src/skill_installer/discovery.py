@@ -455,7 +455,9 @@ class Discovery:
         except (ValueError, yaml.YAMLError):
             return {}
 
-    def _filter_by_platform(self, items: list[DiscoveredItem], platform: str) -> list[DiscoveredItem]:
+    def _filter_by_platform(
+        self, items: list[DiscoveredItem], platform: str
+    ) -> list[DiscoveredItem]:
         """Filter discovered items by platform compatibility.
 
         Args:
@@ -467,10 +469,10 @@ class Discovery:
         """
         normalized = "vscode" if platform == "vscode-insiders" else platform
         return [
-            item for item in items
-            if item.platforms and normalized in [
-                "vscode" if p == "vscode-insiders" else p for p in item.platforms
-            ]
+            item
+            for item in items
+            if item.platforms
+            and normalized in ["vscode" if p == "vscode-insiders" else p for p in item.platforms]
         ]
 
     def get_item_content(self, item: DiscoveredItem) -> str:

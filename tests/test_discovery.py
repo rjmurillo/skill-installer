@@ -361,9 +361,7 @@ class TestMarketplaceDiscovery:
         manifest = discovery.load_marketplace_manifest(tmp_path)
         assert manifest is None
 
-    def test_discover_from_marketplace(
-        self, discovery: Discovery, marketplace_repo: Path
-    ) -> None:
+    def test_discover_from_marketplace(self, discovery: Discovery, marketplace_repo: Path) -> None:
         """Test discovering skills from marketplace manifest."""
         items = discovery.discover_from_marketplace(marketplace_repo)
 
@@ -384,16 +382,12 @@ class TestMarketplaceDiscovery:
         pdf_process = next(i for i in items if i.name == "pdf-process")
         assert pdf_process.frontmatter.get("plugin") == "document-skills"
 
-    def test_discover_from_marketplace_empty(
-        self, discovery: Discovery, sample_repo: Path
-    ) -> None:
+    def test_discover_from_marketplace_empty(self, discovery: Discovery, sample_repo: Path) -> None:
         """Test discover_from_marketplace returns empty for non-marketplace repo."""
         items = discovery.discover_from_marketplace(sample_repo)
         assert items == []
 
-    def test_discover_all_marketplace(
-        self, discovery: Discovery, marketplace_repo: Path
-    ) -> None:
+    def test_discover_all_marketplace(self, discovery: Discovery, marketplace_repo: Path) -> None:
         """Test discover_all uses marketplace discovery when available."""
         items = discovery.discover_all(marketplace_repo, None)
 
@@ -435,9 +429,7 @@ class TestPlatformFiltering:
         items = discovery.discover_all(sample_repo, platform="claude")
 
         # Should only find Claude-compatible items (agents with .md and skills)
-        assert all(
-            "claude" in item.platforms or item.platforms == ["claude"] for item in items
-        )
+        assert all("claude" in item.platforms or item.platforms == ["claude"] for item in items)
 
         # Should include skills (they are Claude-only)
         skills = [i for i in items if i.item_type == "skill"]
@@ -472,9 +464,7 @@ class TestPlatformFiltering:
         assert len(vscode_items) == len(insiders_items)
         assert {i.name for i in vscode_items} == {i.name for i in insiders_items}
 
-    def test_filter_none_returns_all(
-        self, discovery: Discovery, sample_repo: Path
-    ) -> None:
+    def test_filter_none_returns_all(self, discovery: Discovery, sample_repo: Path) -> None:
         """Test that passing None returns all items."""
         all_items = discovery.discover_all(sample_repo, None)
 
@@ -487,9 +477,7 @@ class TestPlatformFiltering:
         assert len(skills) == 1
         assert len(commands) == 1
 
-    def test_filter_by_platform_empty_result(
-        self, discovery: Discovery, tmp_path: Path
-    ) -> None:
+    def test_filter_by_platform_empty_result(self, discovery: Discovery, tmp_path: Path) -> None:
         """Test filtering returns empty list when no items match platform."""
         # Create a repo with only Claude items
         claude_dir = tmp_path / ".claude" / "skills" / "test"
