@@ -134,6 +134,7 @@ class Discovery:
                         agent_path,
                         "agent",
                         repo_path=repo_path,
+                        plugin_name=plugin.name,
                     )
                     if item:
                         items.append(item)
@@ -145,6 +146,7 @@ class Discovery:
                         "command",
                         require_frontmatter=True,
                         repo_path=repo_path,
+                        plugin_name=plugin.name,
                     )
                     if item:
                         items.append(item)
@@ -323,6 +325,7 @@ class Discovery:
         item_type: str,
         require_frontmatter: bool = False,
         repo_path: Path | None = None,
+        plugin_name: str | None = None,
     ) -> DiscoveredItem | None:
         """Parse an agent/command/prompt file.
 
@@ -331,6 +334,7 @@ class Discovery:
             item_type: Type of item (agent, command, prompt).
             require_frontmatter: If True, only return item if frontmatter has 'name' field.
             repo_path: Repository root path for computing relative_path.
+            plugin_name: Optional plugin name from marketplace manifest.
 
         Returns:
             DiscoveredItem or None if parsing fails or validation fails.
@@ -338,6 +342,10 @@ class Discovery:
         try:
             content = path.read_text()
             frontmatter = self._parse_frontmatter(content)
+
+            # Add plugin name to frontmatter if from marketplace
+            if plugin_name:
+                frontmatter["plugin"] = plugin_name
 
             # If frontmatter is required, must have 'name' field
             if require_frontmatter:

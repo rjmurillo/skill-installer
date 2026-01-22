@@ -374,9 +374,15 @@ class TestMarketplaceDiscovery:
         assert "pdf-agent" in names
         assert "pdf-process" in names
 
-        # Check plugin name is in frontmatter
+        # Check plugin name is in frontmatter for all marketplace items
         pdf_item = next(i for i in items if i.name == "pdf")
         assert pdf_item.frontmatter.get("plugin") == "document-skills"
+
+        pdf_agent = next(i for i in items if i.name == "pdf-agent")
+        assert pdf_agent.frontmatter.get("plugin") == "document-skills"
+
+        pdf_process = next(i for i in items if i.name == "pdf-process")
+        assert pdf_process.frontmatter.get("plugin") == "document-skills"
 
     def test_discover_from_marketplace_empty(
         self, discovery: Discovery, sample_repo: Path
