@@ -391,9 +391,13 @@ class TestMarketplaceDiscovery:
         """Test discover_all uses marketplace discovery when available."""
         items = discovery.discover_all(marketplace_repo, None)
 
-        # Should only find skills from marketplace (not auto-discover)
-        assert len(items) == 2
-        assert all(i.item_type == "skill" for i in items)
+        # Should find all items from marketplace (skills, agents, commands)
+        assert len(items) == 4
+        names = [i.name for i in items]
+        assert "pdf" in names
+        assert "docx" in names
+        assert "pdf-agent" in names
+        assert "pdf-process" in names
 
     def test_discover_from_marketplace_missing_skill_dir(
         self, discovery: Discovery, tmp_path: Path
