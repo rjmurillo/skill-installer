@@ -127,6 +127,27 @@ class Discovery:
                     item = self._parse_skill_dir(skill_path, plugin_name=plugin.name)
                     if item:
                         items.append(item)
+            for agent_path_str in plugin.agents:
+                agent_path = repo_path / agent_path_str.lstrip("./")
+                if agent_path.is_file():
+                    item = self._parse_agent_file(
+                        agent_path,
+                        "agent",
+                        repo_path=repo_path,
+                    )
+                    if item:
+                        items.append(item)
+            for command_path_str in plugin.commands:
+                command_path = repo_path / command_path_str.lstrip("./")
+                if command_path.is_file():
+                    item = self._parse_agent_file(
+                        command_path,
+                        "command",
+                        require_frontmatter=True,
+                        repo_path=repo_path,
+                    )
+                    if item:
+                        items.append(item)
 
         return items
 

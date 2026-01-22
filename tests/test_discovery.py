@@ -251,6 +251,12 @@ def marketplace_repo(tmp_path: Path) -> Path:
       "skills": [
         "./skills/pdf",
         "./skills/docx"
+      ],
+      "agents": [
+        "./agents/pdf-agent.md"
+      ],
+      "commands": [
+        "./commands/pdf-process.md"
       ]
     }
   ]
@@ -281,9 +287,35 @@ name: docx
 description: Word document processing
 ---
 
-# DOCX Skill
+  # DOCX Skill
 
 Process Word documents.
+"""
+    )
+
+    # Create agents directory
+    agents_dir = tmp_path / "agents"
+    agents_dir.mkdir(parents=True)
+    (agents_dir / "pdf-agent.md").write_text(
+        """---
+name: pdf-agent
+description: PDF processing agent
+---
+
+# PDF Agent
+"""
+    )
+
+    # Create commands directory
+    commands_dir = tmp_path / "commands"
+    commands_dir.mkdir(parents=True)
+    (commands_dir / "pdf-process.md").write_text(
+        """---
+name: pdf-process
+description: Process PDF command
+---
+
+# PDF Process Command
 """
     )
 
@@ -335,10 +367,12 @@ class TestMarketplaceDiscovery:
         """Test discovering skills from marketplace manifest."""
         items = discovery.discover_from_marketplace(marketplace_repo)
 
-        assert len(items) == 2
+        assert len(items) == 4
         names = [i.name for i in items]
         assert "pdf" in names
         assert "docx" in names
+        assert "pdf-agent" in names
+        assert "pdf-process" in names
 
         # Check plugin name is in frontmatter
         pdf_item = next(i for i in items if i.name == "pdf")

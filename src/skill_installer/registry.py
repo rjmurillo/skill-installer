@@ -41,6 +41,8 @@ class MarketplacePlugin(BaseModel):
     source: str = "./"
     strict: bool = False
     skills: list[str] = Field(default_factory=list)
+    agents: list[str] = Field(default_factory=list)
+    commands: list[str] = Field(default_factory=list)
 
 
 class MarketplaceManifest(BaseModel):
