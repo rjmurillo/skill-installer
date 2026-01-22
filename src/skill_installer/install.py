@@ -51,7 +51,7 @@ class Installer:
         self,
         registry: RegistryManager,
         gitops: GitOps,
-        transformer: 'TransformEngine',
+        transformer: "TransformEngine",
         filesystem: FileSystem,
     ) -> None:
         """Initialize installer with required dependencies.
@@ -76,7 +76,7 @@ class Installer:
         cls,
         registry: RegistryManager,
         gitops: GitOps,
-        transformer: 'TransformEngine' | None = None,
+        transformer: "TransformEngine" | None = None,
         filesystem: FileSystem | None = None,
     ) -> Installer:
         """Factory method for production instantiation.
@@ -269,9 +269,7 @@ class Installer:
 
         return results
 
-    def check_update_needed(
-        self, item: DiscoveredItem, source_name: str, platform: str
-    ) -> bool:
+    def check_update_needed(self, item: DiscoveredItem, source_name: str, platform: str) -> bool:
         """Check if an installed item needs updating.
 
         Args:

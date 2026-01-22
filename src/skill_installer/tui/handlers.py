@@ -70,9 +70,7 @@ class ScreenHandlers:
         if self._notify:
             self._notify(message, severity)
 
-    def handle_source_detail_result(
-        self, result: tuple[str, DisplaySource] | None
-    ) -> None:
+    def handle_source_detail_result(self, result: tuple[str, DisplaySource] | None) -> None:
         """Handle result from SourceDetailScreen.
 
         Args:
@@ -103,9 +101,7 @@ class ScreenHandlers:
             if self._remove_source:
                 self._remove_source(source)
 
-    def handle_item_detail_result(
-        self, result: tuple[str, DisplayItem] | None
-    ) -> None:
+    def handle_item_detail_result(self, result: tuple[str, DisplayItem] | None) -> None:
         """Handle result from ItemDetailScreen.
 
         Args:
@@ -128,9 +124,7 @@ class ScreenHandlers:
         elif option_id == "open_homepage":
             self._handle_open_homepage(item)
 
-    def handle_installed_item_detail_result(
-        self, result: tuple[str, DisplayItem] | None
-    ) -> None:
+    def handle_installed_item_detail_result(self, result: tuple[str, DisplayItem] | None) -> None:
         """Handle result from InstalledItemDetailScreen.
 
         Args:

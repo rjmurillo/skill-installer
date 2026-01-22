@@ -93,30 +93,22 @@ name: test
         result = transformer._create_frontmatter_string({})
         assert result == ""
 
-    def test_transform_frontmatter_to_vscode_blocked(
-        self, transformer: TransformEngine
-    ) -> None:
+    def test_transform_frontmatter_to_vscode_blocked(self, transformer: TransformEngine) -> None:
         """Test that frontmatter transform to VSCode is blocked."""
         with pytest.raises(NotImplementedError, match="disabled|not supported"):
             transformer._transform_frontmatter_to_vscode({"name": "test"})
 
-    def test_transform_frontmatter_to_claude_blocked(
-        self, transformer: TransformEngine
-    ) -> None:
+    def test_transform_frontmatter_to_claude_blocked(self, transformer: TransformEngine) -> None:
         """Test that frontmatter transform to Claude is blocked."""
         with pytest.raises(NotImplementedError, match="disabled|not supported"):
             transformer._transform_frontmatter_to_claude({"name": "test"})
 
-    def test_transform_syntax_to_vscode_blocked(
-        self, transformer: TransformEngine
-    ) -> None:
+    def test_transform_syntax_to_vscode_blocked(self, transformer: TransformEngine) -> None:
         """Test that syntax transform to VSCode is blocked."""
         with pytest.raises(NotImplementedError, match="disabled|not supported"):
             transformer._transform_syntax_to_vscode("body")
 
-    def test_transform_syntax_to_claude_blocked(
-        self, transformer: TransformEngine
-    ) -> None:
+    def test_transform_syntax_to_claude_blocked(self, transformer: TransformEngine) -> None:
         """Test that syntax transform to Claude is blocked."""
         with pytest.raises(NotImplementedError, match="disabled|not supported"):
             transformer._transform_syntax_to_claude("body")
@@ -208,9 +200,7 @@ class TestTransformStrategies:
         assert strategy is not None
         assert isinstance(strategy, CustomStrategy)
 
-    def test_get_strategy_returns_none_for_unknown(
-        self, transformer: TransformEngine
-    ) -> None:
+    def test_get_strategy_returns_none_for_unknown(self, transformer: TransformEngine) -> None:
         """Test get_strategy returns None for unknown platform pair."""
         result = transformer.get_strategy("unknown", "unknown")
         assert result is None

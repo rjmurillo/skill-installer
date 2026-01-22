@@ -235,9 +235,7 @@ class TestInstallCommands:
         cli.uninstall(item="source/agent/test", _context=mock_context)
 
         # Assert
-        mock_context.installer.uninstall_item.assert_called_once_with(
-            "source/agent/test", None
-        )
+        mock_context.installer.uninstall_item.assert_called_once_with("source/agent/test", None)
 
     def test_uninstall_item_not_found(self, mock_context: AppContext) -> None:
         """Test uninstalling a non-existent item shows warning."""

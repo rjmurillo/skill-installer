@@ -465,9 +465,7 @@ class TestPlatformIsAvailable:
         """Test Copilot is available when gh-copilot extension exists."""
         platform = CopilotPlatform()
         platform._base_dir = None  # Reset cached value
-        (temp_home / ".local" / "share" / "gh" / "extensions" / "gh-copilot").mkdir(
-            parents=True
-        )
+        (temp_home / ".local" / "share" / "gh" / "extensions" / "gh-copilot").mkdir(parents=True)
         assert platform.is_available() is True
 
     @patch.object(sys, "platform", "linux")

@@ -68,9 +68,7 @@ class Platform(Protocol):
         """
         raise NotImplementedError
 
-    def get_project_install_path(
-        self, project_root: Path, item_type: str, name: str
-    ) -> Path:
+    def get_project_install_path(self, project_root: Path, item_type: str, name: str) -> Path:
         """Get the project-local installation path for an item.
 
         Args:

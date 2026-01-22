@@ -290,8 +290,7 @@ def _find_item(
     """
     items = ctx.discovery.discover_all(repo_path, filter_platform)
     matches = [
-        i for i in items
-        if i.name == item_name and (item_type is None or i.item_type == item_type)
+        i for i in items if i.name == item_name and (item_type is None or i.item_type == item_type)
     ]
     if not matches:
         tui.show_error(f"Item '{item_name}' not found")
@@ -323,9 +322,7 @@ def _install_to_platforms(
 
 @app.command()
 def install(
-    item: Annotated[
-        str | None, typer.Argument(help="Item to install (source/type/name)")
-    ] = None,
+    item: Annotated[str | None, typer.Argument(help="Item to install (source/type/name)")] = None,
     platform: Annotated[
         str | None, typer.Option("--platform", "-p", help="Target platforms (comma-separated)")
     ] = None,
@@ -513,7 +510,9 @@ def config_show(
 
     console.print("\n[bold]Configuration[/bold]")
     console.print(f"  Registry directory: {ctx.registry.registry_dir}")
-    console.print(f"  Default platforms: {', '.join(sources_registry.defaults.get('targetPlatforms', []))}")
+    console.print(
+        f"  Default platforms: {', '.join(sources_registry.defaults.get('targetPlatforms', []))}"
+    )
 
 
 @config_app.command("set")

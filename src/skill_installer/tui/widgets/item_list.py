@@ -114,9 +114,7 @@ class ItemDataTable(DataTable):
 
                 # Sanitize external data (CRITICAL-001)
                 name = sanitize_terminal_text(item.name, max_length=self.MAX_NAME_LENGTH)
-                source = sanitize_terminal_text(
-                    item.source_name, max_length=self.MAX_SOURCE_LENGTH
-                )
+                source = sanitize_terminal_text(item.source_name, max_length=self.MAX_SOURCE_LENGTH)
                 name_source = f"{name} \u2022 {source}"
 
                 # Sanitize platform names from external data
@@ -148,9 +146,7 @@ class ItemDataTable(DataTable):
         finally:
             self._is_filtering = False
 
-    def _get_indicator(
-        self, item: DisplayItem, checked_set: set[str] | None = None
-    ) -> str:
+    def _get_indicator(self, item: DisplayItem, checked_set: set[str] | None = None) -> str:
         """Get the indicator for an item."""
         check_set = checked_set if checked_set is not None else self._checked
         if item.unique_id in check_set:

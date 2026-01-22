@@ -103,11 +103,7 @@ def profile_widget_creation(ctx: object) -> float:
     rows = []
     for item in discovered:
         name_source = f"{item.name} • {item.source_name}"
-        status = (
-            f"[{', '.join(item.installed_platforms)}]"
-            if item.installed_platforms
-            else ""
-        )
+        status = f"[{', '.join(item.installed_platforms)}]" if item.installed_platforms else ""
         desc = (item.description or "No description")[:60]
         rows.append(("○", name_source, status, desc))
     elapsed = time.time() - start

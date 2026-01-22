@@ -47,7 +47,9 @@ class DataManager:
             except Exception as e:
                 logger.debug("Failed to update source %s: %s", source.name, e)
 
-    def load_all_data(self) -> tuple[
+    def load_all_data(
+        self,
+    ) -> tuple[
         list[DisplayItem],
         list[DisplayItem],
         list[DisplaySource],
@@ -96,9 +98,7 @@ class DataManager:
             if item.id not in installed_map:
                 installed_map[item.id] = []
             installed_map[item.id].append(item.platform)
-            installed_by_source[item.source] = (
-                installed_by_source.get(item.source, 0) + 1
-            )
+            installed_by_source[item.source] = installed_by_source.get(item.source, 0) + 1
 
         return installed_map, installed_by_source
 
@@ -131,11 +131,7 @@ class DataManager:
                 )
                 display_name = self._get_display_name(repo_path, source.name)
 
-        last_sync_str = (
-            source.last_sync.strftime("%Y-%m-%d %H:%M")
-            if source.last_sync
-            else "Never"
-        )
+        last_sync_str = source.last_sync.strftime("%Y-%m-%d %H:%M") if source.last_sync else "Never"
 
         display_source = DisplaySource(
             name=source.name,

@@ -121,19 +121,23 @@ class DiscoverPane(Container):
         # Apply platform filter
         if self._platform_filter:
             # Normalize platform for comparison
-            normalized = "vscode" if self._platform_filter == "vscode-insiders" else self._platform_filter
+            normalized = (
+                "vscode" if self._platform_filter == "vscode-insiders" else self._platform_filter
+            )
             filtered = [
-                item for item in filtered
-                if item.platforms and normalized in [
-                    "vscode" if p == "vscode-insiders" else p for p in item.platforms
-                ]
+                item
+                for item in filtered
+                if item.platforms
+                and normalized
+                in ["vscode" if p == "vscode-insiders" else p for p in item.platforms]
             ]
 
         # Apply search query
         query = self._search_query.lower()
         if query:
             filtered = [
-                item for item in filtered
+                item
+                for item in filtered
                 if query in item.name.lower()
                 or query in item.description.lower()
                 or query in item.source_name.lower()
