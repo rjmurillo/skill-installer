@@ -21,7 +21,6 @@ if TYPE_CHECKING:
     from skill_installer.registry import InstalledItem, Source
 
 
-
 @runtime_checkable
 class SourceRepository(Protocol):
     """Protocol for git repository operations.
@@ -208,9 +207,7 @@ class ItemRegistry(Protocol):
         """
         ...
 
-    def get_installed(
-        self, item_id: str, platform: str | None = None
-    ) -> list[InstalledItem]:
+    def get_installed(self, item_id: str, platform: str | None = None) -> list[InstalledItem]:
         """Get installed items by ID.
 
         Args:
@@ -244,9 +241,7 @@ class ItemDiscovery(Protocol):
     Implementations discover agents, skills, and commands in source repositories.
     """
 
-    def discover_all(
-        self, repo_path: Path, platform: str | None
-    ) -> list[DiscoveredItem]:
+    def discover_all(self, repo_path: Path, platform: str | None) -> list[DiscoveredItem]:
         """Discover all items in a repository.
 
         Args:
@@ -312,9 +307,7 @@ class ItemInstaller(Protocol):
         """
         ...
 
-    def uninstall_item(
-        self, item_id: str, platform: str | None = None
-    ) -> list[InstallResult]:
+    def uninstall_item(self, item_id: str, platform: str | None = None) -> list[InstallResult]:
         """Uninstall an item.
 
         Args:
@@ -326,9 +319,7 @@ class ItemInstaller(Protocol):
         """
         ...
 
-    def check_update_needed(
-        self, item: DiscoveredItem, source_name: str, platform: str
-    ) -> bool:
+    def check_update_needed(self, item: DiscoveredItem, source_name: str, platform: str) -> bool:
         """Check if an installed item needs updating.
 
         Args:

@@ -17,8 +17,8 @@ import typer
 from skill_installer import cli
 from skill_installer.context import AppContext
 from skill_installer.discovery import DiscoveredItem
-from skill_installer.types import InstallResult
 from skill_installer.registry import InstalledItem, Source
+from skill_installer.types import InstallResult
 
 
 @pytest.fixture
@@ -235,9 +235,7 @@ class TestInstallCommands:
         cli.uninstall(item="source/agent/test", _context=mock_context)
 
         # Assert
-        mock_context.installer.uninstall_item.assert_called_once_with(
-            "source/agent/test", None
-        )
+        mock_context.installer.uninstall_item.assert_called_once_with("source/agent/test", None)
 
     def test_uninstall_item_not_found(self, mock_context: AppContext) -> None:
         """Test uninstalling a non-existent item shows warning."""

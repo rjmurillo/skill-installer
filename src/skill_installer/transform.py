@@ -14,8 +14,6 @@ from abc import ABC, abstractmethod
 
 import yaml
 
-from skill_installer.protocols import TransformStrategy
-
 
 class BaseTransformStrategy(ABC):
     """Base class for transformation strategies.
@@ -91,9 +89,7 @@ class ClaudeToVSCodeStrategy(BaseTransformStrategy):
 
     def transform_syntax(self, body: str) -> str:
         """Blocked: incompatible frontmatter formats."""
-        raise NotImplementedError(
-            "Claude to VSCode transform is disabled. See ROADMAP.md."
-        )
+        raise NotImplementedError("Claude to VSCode transform is disabled. See ROADMAP.md.")
 
 
 class VSCodeToClaudeStrategy(BaseTransformStrategy):
@@ -125,9 +121,7 @@ class VSCodeToClaudeStrategy(BaseTransformStrategy):
 
     def transform_syntax(self, body: str) -> str:
         """Blocked: incompatible frontmatter formats."""
-        raise NotImplementedError(
-            "VSCode to Claude transform is disabled. See ROADMAP.md."
-        )
+        raise NotImplementedError("VSCode to Claude transform is disabled. See ROADMAP.md.")
 
 
 class IdentityStrategy(BaseTransformStrategy):
@@ -255,8 +249,7 @@ class TransformEngine:
             NotImplementedError: Always raised. Cross-platform transforms disabled.
         """
         raise NotImplementedError(
-            "Claude to VSCode transforms not supported. "
-            "Formats are incompatible. See ROADMAP.md."
+            "Claude to VSCode transforms not supported. Formats are incompatible. See ROADMAP.md."
         )
 
     def vscode_to_claude(self, content: str) -> str:
@@ -270,8 +263,7 @@ class TransformEngine:
             NotImplementedError: Always raised. Cross-platform transforms disabled.
         """
         raise NotImplementedError(
-            "VSCode to Claude transforms not supported. "
-            "Formats are incompatible. See ROADMAP.md."
+            "VSCode to Claude transforms not supported. Formats are incompatible. See ROADMAP.md."
         )
 
     def copilot_to_claude(self, content: str) -> str:
@@ -285,8 +277,7 @@ class TransformEngine:
             NotImplementedError: Always raised. Cross-platform transforms disabled.
         """
         raise NotImplementedError(
-            "Copilot to Claude transforms not supported. "
-            "Formats are incompatible. See ROADMAP.md."
+            "Copilot to Claude transforms not supported. Formats are incompatible. See ROADMAP.md."
         )
 
     def claude_to_copilot(self, content: str) -> str:
@@ -300,8 +291,7 @@ class TransformEngine:
             NotImplementedError: Always raised. Cross-platform transforms disabled.
         """
         raise NotImplementedError(
-            "Claude to Copilot transforms not supported. "
-            "Formats are incompatible. See ROADMAP.md."
+            "Claude to Copilot transforms not supported. Formats are incompatible. See ROADMAP.md."
         )
 
     def transform(self, content: str, source_platform: str, target_platform: str) -> str:
@@ -346,7 +336,7 @@ class TransformEngine:
         try:
             end_idx = content.index("---", 3)
             frontmatter_str = content[3:end_idx].strip()
-            body = content[end_idx + 3:].lstrip("\n")
+            body = content[end_idx + 3 :].lstrip("\n")
             return yaml.safe_load(frontmatter_str) or {}, body
         except (ValueError, yaml.YAMLError):
             return {}, content
@@ -413,9 +403,7 @@ class TransformEngine:
         Raises:
             NotImplementedError: Always raised.
         """
-        raise NotImplementedError(
-            "Claude to VSCode syntax transform is disabled. See ROADMAP.md."
-        )
+        raise NotImplementedError("Claude to VSCode syntax transform is disabled. See ROADMAP.md.")
 
     def _transform_syntax_to_claude(self, body: str) -> str:
         """Transform body syntax for Claude.
@@ -426,9 +414,7 @@ class TransformEngine:
         Raises:
             NotImplementedError: Always raised.
         """
-        raise NotImplementedError(
-            "VSCode to Claude syntax transform is disabled. See ROADMAP.md."
-        )
+        raise NotImplementedError("VSCode to Claude syntax transform is disabled. See ROADMAP.md.")
 
     def detect_platform(self, content: str) -> str | None:
         """Detect the platform format of content.

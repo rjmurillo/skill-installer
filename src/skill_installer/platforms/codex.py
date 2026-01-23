@@ -71,9 +71,7 @@ class CodexPlatform(BasePlatform):
         # Check if the config directory exists
         return self.base_dir.exists() or self.skills_dir.exists()
 
-    def get_project_install_path(
-        self, project_root: Path, item_type: str, name: str
-    ) -> Path:
+    def get_project_install_path(self, project_root: Path, item_type: str, name: str) -> Path:
         """Get the project-local installation path for an item.
 
         Args:

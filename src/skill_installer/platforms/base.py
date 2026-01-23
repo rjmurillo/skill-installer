@@ -49,9 +49,7 @@ class BasePlatform(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def get_project_install_path(
-        self, project_root: Path, item_type: str, name: str
-    ) -> Path:
+    def get_project_install_path(self, project_root: Path, item_type: str, name: str) -> Path:
         """Get the project-local installation path for an item."""
         raise NotImplementedError
 
@@ -61,7 +59,7 @@ class BasePlatform(ABC):
         Override in subclasses to specify platform-specific requirements.
         Per GitHub/VSCode specs, frontmatter fields are optional for agents.
         https://docs.github.com/en/copilot/reference/custom-agents-configuration
-        
+
         Returns:
             List of field names that must be present in frontmatter.
         """

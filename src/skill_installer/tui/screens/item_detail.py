@@ -107,7 +107,7 @@ class ItemDetailScreen(ModalScreen[tuple[str, DisplayItem] | None]):
                 yield Static("", id="item-detail-author")
                 yield Static(
                     "Make sure you trust a plugin before installing, updating, or using it. See each plugin's homepage for more information.",
-                    id="item-detail-warning"
+                    id="item-detail-warning",
                 )
             with Vertical(id="item-detail-options"):
                 pass  # Options will be added dynamically
@@ -120,7 +120,7 @@ class ItemDetailScreen(ModalScreen[tuple[str, DisplayItem] | None]):
         title_map = {
             "agent": "Agent details",
             "skill": "Skill details",
-            "command": "Command details"
+            "command": "Command details",
         }
         title = title_map.get(item.item_type, "Plugin details")
         self.query_one("#item-detail-title", Static).update(title)
@@ -131,7 +131,7 @@ class ItemDetailScreen(ModalScreen[tuple[str, DisplayItem] | None]):
 
         # License (from frontmatter if available, otherwise from repository)
         license_text = ""
-        if hasattr(item.raw_data, 'frontmatter') and item.raw_data.frontmatter:
+        if hasattr(item.raw_data, "frontmatter") and item.raw_data.frontmatter:
             license_text = item.raw_data.frontmatter.get("license", "")
 
         # Fall back to repository license if frontmatter doesn't have it
@@ -148,11 +148,13 @@ class ItemDetailScreen(ModalScreen[tuple[str, DisplayItem] | None]):
             self.query_one("#item-detail-license", Static).update("")
 
         # Description
-        self.query_one("#item-detail-description", Static).update(item.description or "No description")
+        self.query_one("#item-detail-description", Static).update(
+            item.description or "No description"
+        )
 
         # Author (from frontmatter if available)
         author = ""
-        if hasattr(item.raw_data, 'frontmatter') and item.raw_data.frontmatter:
+        if hasattr(item.raw_data, "frontmatter") and item.raw_data.frontmatter:
             author = item.raw_data.frontmatter.get("author", "")
         if author:
             self.query_one("#item-detail-author", Static).update(f"By: {author}")
@@ -165,12 +167,19 @@ class ItemDetailScreen(ModalScreen[tuple[str, DisplayItem] | None]):
             self._options.append(("uninstall", "Uninstall"))
         else:
             self._options.append(("install_user", "Install for you (user scope)"))
-            self._options.append(("install_project", "Install for all collaborators on a git repository (project scope)"))
+            self._options.append(
+                (
+                    "install_project",
+                    "Install for all collaborators on a git repository (project scope)",
+                )
+            )
 
         # Homepage option (from frontmatter or source URL)
         homepage = ""
-        if hasattr(item.raw_data, 'frontmatter') and item.raw_data.frontmatter:
-            homepage = item.raw_data.frontmatter.get("homepage", "") or item.raw_data.frontmatter.get("url", "")
+        if hasattr(item.raw_data, "frontmatter") and item.raw_data.frontmatter:
+            homepage = item.raw_data.frontmatter.get(
+                "homepage", ""
+            ) or item.raw_data.frontmatter.get("url", "")
         # Fall back to source URL if no homepage in frontmatter
         if not homepage and item.source_url:
             homepage = item.source_url

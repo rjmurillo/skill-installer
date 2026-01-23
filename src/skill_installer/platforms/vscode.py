@@ -116,9 +116,7 @@ class VSCodePlatform(BasePlatform):
         ]
         return any(p.exists() for p in search_paths)
 
-    def get_project_install_path(
-        self, project_root: Path, item_type: str, name: str
-    ) -> Path:
+    def get_project_install_path(self, project_root: Path, item_type: str, name: str) -> Path:
         """Get the project-local installation path for an item.
 
         Args:

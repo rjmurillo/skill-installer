@@ -41,6 +41,8 @@ class MarketplacePlugin(BaseModel):
     source: str = "./"
     strict: bool = False
     skills: list[str] = Field(default_factory=list)
+    agents: list[str] = Field(default_factory=list)
+    commands: list[str] = Field(default_factory=list)
 
 
 class MarketplaceManifest(BaseModel):
@@ -138,7 +140,7 @@ class RegistryManager:
         self.installed_file = self.registry_dir / "installed.json"
 
     @classmethod
-    def create(cls, registry_dir: Path) -> "RegistryManager":
+    def create(cls, registry_dir: Path) -> RegistryManager:
         """Create a registry manager with a custom directory.
 
         Args:
@@ -150,7 +152,7 @@ class RegistryManager:
         return cls(registry_dir=registry_dir)
 
     @classmethod
-    def create_default(cls) -> "RegistryManager":
+    def create_default(cls) -> RegistryManager:
         """Create a registry manager with the default directory.
 
         Uses ~/.skill-installer as the registry location.
@@ -356,7 +358,7 @@ class RegistryManager:
         stale = []
         for source in registry.sources:
             if source.auto_update:
-                if source.last_sync is None or source.last_sync < cutoff:
+                if source.last_sync is None or source.last_sync <= cutoff:
                     stale.append(source)
         return stale
 

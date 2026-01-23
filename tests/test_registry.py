@@ -344,9 +344,7 @@ class TestMarketplaceManifest:
             "name": "test-marketplace",
             "owner": {"name": "Test Author", "email": "test@example.com"},
             "metadata": {"description": "Test marketplace", "version": "1.0.0"},
-            "plugins": [
-                {"name": "test-plugin", "skills": ["./skills/pdf"]}
-            ],
+            "plugins": [{"name": "test-plugin", "skills": ["./skills/pdf"]}],
         }
         manifest_file = tmp_path / "marketplace.json"
         manifest_file.write_text(json.dumps(manifest_data))
@@ -467,7 +465,9 @@ class TestGetStaleAutoUpdateSources:
         stale = temp_registry.get_stale_auto_update_sources()
         assert len(stale) == 0
 
-    def test_stale_sources_excludes_auto_update_disabled(self, temp_registry: RegistryManager) -> None:
+    def test_stale_sources_excludes_auto_update_disabled(
+        self, temp_registry: RegistryManager
+    ) -> None:
         """Test sources with auto_update disabled are not stale."""
         temp_registry.add_source("https://github.com/test/repo", "test")
         # auto_update defaults to False
