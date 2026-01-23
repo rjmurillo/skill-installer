@@ -10,8 +10,8 @@ import pytest
 from skill_installer.discovery import DiscoveredItem
 from skill_installer.gitops import GitOps
 from skill_installer.install import Installer, get_project_root
-from skill_installer.types import InstallResult
 from skill_installer.registry import RegistryManager
+from skill_installer.types import InstallResult
 
 
 @pytest.fixture

@@ -89,17 +89,13 @@ class LocationSelectionScreen(ModalScreen[tuple[list[str], DisplayItem] | None])
         with Vertical():
             with Vertical(id="location-header"):
                 yield Static("Select installation locations", id="location-title")
-                yield Static(
-                    f"Choose where to install '{self.item.name}'",
-                    id="location-subtitle"
-                )
+                yield Static(f"Choose where to install '{self.item.name}'", id="location-subtitle")
             with Vertical(id="location-options"):
                 pass  # Options will be added dynamically
             with Vertical(id="location-actions"):
                 yield Static("", id="location-action-hint")
             yield Static(
-                "Press SPACE to toggle, ENTER to install, ESC to cancel",
-                id="location-footer"
+                "Press SPACE to toggle, ENTER to install, ESC to cancel", id="location-footer"
             )
 
     def on_mount(self) -> None:
@@ -140,9 +136,7 @@ class LocationSelectionScreen(ModalScreen[tuple[list[str], DisplayItem] | None])
 
     def action_confirm(self) -> None:
         """Confirm selection and install."""
-        checked_platforms = [
-            opt.platform_id for opt in self._location_options if opt.checked
-        ]
+        checked_platforms = [opt.platform_id for opt in self._location_options if opt.checked]
 
         if not checked_platforms:
             self.query_one("#location-action-hint", Static).update(

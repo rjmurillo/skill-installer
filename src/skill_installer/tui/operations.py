@@ -69,9 +69,7 @@ class ItemOperations:
         target_platforms = platforms if platforms is not None else source.platforms
 
         for platform in target_platforms:
-            result = self.installer.install_item(
-                item.raw_data, item.source_name, platform
-            )
+            result = self.installer.install_item(item.raw_data, item.source_name, platform)
             if result.success:
                 self.notify(f"Installed {item.name} to {platform}")
             else:
@@ -144,7 +142,9 @@ class ItemOperations:
         if success_count > 0 and self._load_data:
             self._load_data()
 
-    def update_source(self, source: DisplaySource, update_status: Callable[[str], None] | None = None) -> None:
+    def update_source(
+        self, source: DisplaySource, update_status: Callable[[str], None] | None = None
+    ) -> None:
         """Update a source repository.
 
         Args:
@@ -215,9 +215,7 @@ class ItemOperations:
         # Reinstall to each platform where it's currently installed
         success_count = 0
         for platform in item.installed_platforms:
-            result = self.installer.install_item(
-                item.raw_data, item.source_name, platform
-            )
+            result = self.installer.install_item(item.raw_data, item.source_name, platform)
             if result.success:
                 success_count += 1
             else:

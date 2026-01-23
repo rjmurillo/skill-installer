@@ -117,11 +117,7 @@ class ItemDataTable(DataTable):
         for item in items:
             indicator = self._get_indicator(item, checked_ids)
             name_source = f"{item.name} \u2022 {item.source_name}"
-            status = (
-                f"[{', '.join(item.installed_platforms)}]"
-                if item.installed_platforms
-                else ""
-            )
+            status = f"[{', '.join(item.installed_platforms)}]" if item.installed_platforms else ""
             desc = (item.description or "No description")[:60]
             rows.append((indicator, name_source, status, desc))
 
@@ -133,9 +129,7 @@ class ItemDataTable(DataTable):
         self._checked = checked_ids
         self._sync_checked_state_with_display()
 
-    def _get_indicator(
-        self, item: MockDisplayItem, checked_set: set[str] | None = None
-    ) -> str:
+    def _get_indicator(self, item: MockDisplayItem, checked_set: set[str] | None = None) -> str:
         """Get the indicator for an item."""
         check_set = checked_set if checked_set is not None else self._checked
         if item.unique_id in check_set:
@@ -365,11 +359,7 @@ def run_headless_benchmark() -> dict:
     for item in items:
         indicator = table._get_indicator(item)
         name_source = f"{item.name} * {item.source_name}"
-        status = (
-            f"[{', '.join(item.installed_platforms)}]"
-            if item.installed_platforms
-            else ""
-        )
+        status = f"[{', '.join(item.installed_platforms)}]" if item.installed_platforms else ""
         desc = (item.description or "No description")[:60]
         rows.append((indicator, name_source, status, desc))
     row_prep_time = time.time() - start

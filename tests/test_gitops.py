@@ -149,9 +149,7 @@ class TestGitOps:
             temp_gitops.clone_or_fetch("https://github.com/test/repo", "test", "main")
 
     @patch("skill_installer.gitops.Repo")
-    def test_clone_fallback_main_to_master(
-        self, mock_repo: MagicMock, temp_gitops: GitOps
-    ) -> None:
+    def test_clone_fallback_main_to_master(self, mock_repo: MagicMock, temp_gitops: GitOps) -> None:
         """Test fallback from main to master when main fails."""
         from git.exc import GitCommandError
 
@@ -187,9 +185,7 @@ class TestGitOps:
 
     def test_extract_github_owner_repo_https(self, temp_gitops: GitOps) -> None:
         """Test extracting owner/repo from HTTPS URL."""
-        result = temp_gitops._extract_github_owner_repo(
-            "https://github.com/owner/repo.git"
-        )
+        result = temp_gitops._extract_github_owner_repo("https://github.com/owner/repo.git")
         assert result == ("owner", "repo")
 
     def test_extract_github_owner_repo_ssh(self, temp_gitops: GitOps) -> None:

@@ -330,9 +330,7 @@ class _LocationSelectionTestApp(App):
         yield Container()
 
     async def on_mount(self) -> None:
-        await self.push_screen(
-            LocationSelectionScreen(self.test_item, self.test_platforms)
-        )
+        await self.push_screen(LocationSelectionScreen(self.test_item, self.test_platforms))
 
 
 def _make_test_display_item(
@@ -509,8 +507,7 @@ class _ConfirmationTestApp(App):
 
     async def on_mount(self) -> None:
         await self.push_screen(
-            ConfirmationScreen(self.test_title, self.test_message),
-            self._handle_result
+            ConfirmationScreen(self.test_title, self.test_message), self._handle_result
         )
 
     def _handle_result(self, result: bool) -> None:
@@ -1722,9 +1719,7 @@ class _SourceDetailTestApp(App):
     async def on_mount(self) -> None:
         from skill_installer.tui.screens.source_detail import SourceDetailScreen
 
-        await self.push_screen(
-            SourceDetailScreen(self.test_source), self._handle_result
-        )
+        await self.push_screen(SourceDetailScreen(self.test_source), self._handle_result)
 
     def _handle_result(self, result: tuple[str, DisplaySource] | None) -> None:
         self.result = result
@@ -2034,9 +2029,7 @@ class TestDataManagerDetails:
         mock_source.url = "https://example.com"
         mock_source.last_sync = None
 
-        discovered, installed, display_source = manager._load_source_data(
-            mock_source, {}, {}
-        )
+        discovered, installed, display_source = manager._load_source_data(mock_source, {}, {})
 
         assert discovered == []
         assert installed == []
@@ -2059,9 +2052,7 @@ class TestDataManagerDetails:
 
         from pathlib import Path
 
-        discovered, installed, count = manager._discover_items(
-            mock_source, Path("/tmp"), {}
-        )
+        discovered, installed, count = manager._discover_items(mock_source, Path("/tmp"), {})
 
         assert discovered == []
         assert installed == []
@@ -2342,9 +2333,7 @@ class TestItemOperations:
         mock_installer = MagicMock()
         mock_installer.uninstall_item.return_value = [mock_result]
 
-        ops = ItemOperations(
-            installer=mock_installer, notify=mock_notify, load_data=mock_load
-        )
+        ops = ItemOperations(installer=mock_installer, notify=mock_notify, load_data=mock_load)
         ops.uninstall_item(_make_test_display_item())
 
         assert any("Uninstalled" in msg for msg, _ in notifications)
@@ -2509,9 +2498,7 @@ class _InstalledItemDetailTestApp(App):
         )
 
         await self.push_screen(
-            InstalledItemDetailScreen(
-                self.test_item, registry_manager=self.registry_manager
-            ),
+            InstalledItemDetailScreen(self.test_item, registry_manager=self.registry_manager),
             self._handle_result,
         )
 
@@ -2971,9 +2958,7 @@ class TestUpdateItemOperation:
         item = _make_test_display_item(installed_platforms=["claude"])
         ops.update_item(item)
 
-        mock_gitops.clone_or_fetch.assert_called_once_with(
-            mock_source.url, mock_source.name
-        )
+        mock_gitops.clone_or_fetch.assert_called_once_with(mock_source.url, mock_source.name)
 
     def test_update_item_reinstalls_to_platforms(self) -> None:
         """Test update_item reinstalls to all installed platforms."""

@@ -12,7 +12,6 @@ Output is written to /tmp/tui_profile_detailed.log
 
 from __future__ import annotations
 
-import sys
 import time
 
 # Profiling data storage

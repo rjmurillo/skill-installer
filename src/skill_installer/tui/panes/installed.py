@@ -42,7 +42,8 @@ class InstalledPane(Container):
         query = self._search_query.lower()
         if query:
             filtered = [
-                item for item in self._all_items
+                item
+                for item in self._all_items
                 if query in item.name.lower()
                 or query in item.description.lower()
                 or query in item.source_name.lower()

@@ -66,7 +66,7 @@ class Discovery:
         pass
 
     @classmethod
-    def create(cls) -> "Discovery":
+    def create(cls) -> Discovery:
         """Create a discovery instance.
 
         Returns:
@@ -125,6 +125,29 @@ class Discovery:
                 skill_path = repo_path / skill_path_str.lstrip("./")
                 if skill_path.is_dir():
                     item = self._parse_skill_dir(skill_path, plugin_name=plugin.name)
+                    if item:
+                        items.append(item)
+            for agent_path_str in plugin.agents:
+                agent_path = repo_path / agent_path_str.lstrip("./")
+                if agent_path.is_file():
+                    item = self._parse_agent_file(
+                        agent_path,
+                        "agent",
+                        repo_path=repo_path,
+                        plugin_name=plugin.name,
+                    )
+                    if item:
+                        items.append(item)
+            for command_path_str in plugin.commands:
+                command_path = repo_path / command_path_str.lstrip("./")
+                if command_path.is_file():
+                    item = self._parse_agent_file(
+                        command_path,
+                        "command",
+                        require_frontmatter=True,
+                        repo_path=repo_path,
+                        plugin_name=plugin.name,
+                    )
                     if item:
                         items.append(item)
 
@@ -302,6 +325,7 @@ class Discovery:
         item_type: str,
         require_frontmatter: bool = False,
         repo_path: Path | None = None,
+        plugin_name: str | None = None,
     ) -> DiscoveredItem | None:
         """Parse an agent/command/prompt file.
 
@@ -310,6 +334,7 @@ class Discovery:
             item_type: Type of item (agent, command, prompt).
             require_frontmatter: If True, only return item if frontmatter has 'name' field.
             repo_path: Repository root path for computing relative_path.
+            plugin_name: Optional plugin name from marketplace manifest.
 
         Returns:
             DiscoveredItem or None if parsing fails or validation fails.
@@ -317,6 +342,10 @@ class Discovery:
         try:
             content = path.read_text()
             frontmatter = self._parse_frontmatter(content)
+
+            # Add plugin name to frontmatter if from marketplace
+            if plugin_name:
+                frontmatter["plugin"] = plugin_name
 
             # If frontmatter is required, must have 'name' field
             if require_frontmatter:
@@ -339,11 +368,11 @@ class Discovery:
             elif path.suffix == ".md":
                 platforms = ["claude"]
 
-            # Compute relative path from repo root
+            # Compute relative path from repo root (normalized to forward slashes for cross-platform compatibility)
             relative_path = ""
             if repo_path:
                 try:
-                    relative_path = str(path.relative_to(repo_path))
+                    relative_path = path.relative_to(repo_path).as_posix()
                 except ValueError:
                     relative_path = path.name
 
@@ -387,11 +416,11 @@ class Discovery:
             name = frontmatter.get("name", path.name)
             description = frontmatter.get("description", "")
 
-            # Compute relative path from repo root
+            # Compute relative path from repo root (normalized to forward slashes for cross-platform compatibility)
             relative_path = ""
             if repo_path:
                 try:
-                    relative_path = str(path.relative_to(repo_path))
+                    relative_path = path.relative_to(repo_path).as_posix()
                 except ValueError:
                     relative_path = path.name
 
@@ -426,7 +455,9 @@ class Discovery:
         except (ValueError, yaml.YAMLError):
             return {}
 
-    def _filter_by_platform(self, items: list[DiscoveredItem], platform: str) -> list[DiscoveredItem]:
+    def _filter_by_platform(
+        self, items: list[DiscoveredItem], platform: str
+    ) -> list[DiscoveredItem]:
         """Filter discovered items by platform compatibility.
 
         Args:
@@ -438,10 +469,10 @@ class Discovery:
         """
         normalized = "vscode" if platform == "vscode-insiders" else platform
         return [
-            item for item in items
-            if item.platforms and normalized in [
-                "vscode" if p == "vscode-insiders" else p for p in item.platforms
-            ]
+            item
+            for item in items
+            if item.platforms
+            and normalized in ["vscode" if p == "vscode-insiders" else p for p in item.platforms]
         ]
 
     def get_item_content(self, item: DiscoveredItem) -> str:

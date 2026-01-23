@@ -87,7 +87,6 @@ def profile_widget_creation(ctx: object) -> float:
     print("=" * 60)
 
     from skill_installer.tui.data_manager import DataManager
-    from skill_installer.tui.widgets.item_list import ItemDataTable
 
     dm = DataManager(
         registry_manager=ctx.registry,  # type: ignore[attr-defined]
@@ -98,16 +97,11 @@ def profile_widget_creation(ctx: object) -> float:
 
     # Simulate DataTable row creation (no widget per row, just data)
     start = time.time()
-    table = ItemDataTable(id="test-table")
     # Prepare rows without mounting (since we're not in Textual context)
     rows = []
     for item in discovered:
         name_source = f"{item.name} • {item.source_name}"
-        status = (
-            f"[{', '.join(item.installed_platforms)}]"
-            if item.installed_platforms
-            else ""
-        )
+        status = f"[{', '.join(item.installed_platforms)}]" if item.installed_platforms else ""
         desc = (item.description or "No description")[:60]
         rows.append(("○", name_source, status, desc))
     elapsed = time.time() - start

@@ -26,11 +26,12 @@ if TYPE_CHECKING:
     pass
 
 
-
 def _default_filesystem() -> FileSystem:
     """Create the default filesystem implementation."""
     from skill_installer.filesystem import RealFileSystem
+
     return RealFileSystem()
+
 
 @dataclass
 class AppContext:
@@ -48,8 +49,6 @@ class AppContext:
     discovery: ItemDiscovery
     installer: ItemInstaller
     filesystem: FileSystem = field(default_factory=_default_filesystem)
-
-
 
 
 def create_context(
@@ -75,9 +74,7 @@ def create_context(
     from skill_installer.registry import RegistryManager
 
     registry = (
-        RegistryManager.create(registry_dir)
-        if registry_dir
-        else RegistryManager.create_default()
+        RegistryManager.create(registry_dir) if registry_dir else RegistryManager.create_default()
     )
     gitops = GitOps.create(cache_dir) if cache_dir else GitOps.create_default()
     discovery = Discovery.create()

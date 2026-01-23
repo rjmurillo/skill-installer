@@ -6,8 +6,6 @@ import logging
 import webbrowser
 from typing import Any
 
-logger = logging.getLogger(__name__)
-
 from textual import on
 from textual.app import App, ComposeResult
 from textual.binding import Binding
@@ -27,6 +25,8 @@ from skill_installer.tui.screens.source_detail import SourceDetailScreen
 from skill_installer.tui.styles import APP_CSS
 from skill_installer.tui.widgets.item_list import ItemListView
 from skill_installer.tui.widgets.source_list import SourceListView
+
+logger = logging.getLogger(__name__)
 
 
 class SkillInstallerApp(App):
