@@ -6,3 +6,12 @@ repos:
         args: ["-c", "pyproject.toml", "-r", "src/", "--severity-level", "high"]
         additional_dependencies: ["bandit[toml]"]
         pass_filenames: false
+  - repo: local
+    hooks:
+      - id: pytest
+        name: pytest
+        entry: uv run pytest --cov
+        language: system
+        pass_filenames: false
+        stages: [commit]
+        always_run: true
