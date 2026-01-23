@@ -358,7 +358,7 @@ class RegistryManager:
         stale = []
         for source in registry.sources:
             if source.auto_update:
-                if source.last_sync is None or source.last_sync < cutoff:
+                if source.last_sync is None or source.last_sync <= cutoff:
                     stale.append(source)
         return stale
 
