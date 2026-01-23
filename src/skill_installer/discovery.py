@@ -368,11 +368,11 @@ class Discovery:
             elif path.suffix == ".md":
                 platforms = ["claude"]
 
-            # Compute relative path from repo root
+            # Compute relative path from repo root (normalized to forward slashes for cross-platform compatibility)
             relative_path = ""
             if repo_path:
                 try:
-                    relative_path = str(path.relative_to(repo_path))
+                    relative_path = path.relative_to(repo_path).as_posix()
                 except ValueError:
                     relative_path = path.name
 
@@ -416,11 +416,11 @@ class Discovery:
             name = frontmatter.get("name", path.name)
             description = frontmatter.get("description", "")
 
-            # Compute relative path from repo root
+            # Compute relative path from repo root (normalized to forward slashes for cross-platform compatibility)
             relative_path = ""
             if repo_path:
                 try:
-                    relative_path = str(path.relative_to(repo_path))
+                    relative_path = path.relative_to(repo_path).as_posix()
                 except ValueError:
                     relative_path = path.name
 
