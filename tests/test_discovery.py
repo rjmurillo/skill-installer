@@ -538,3 +538,487 @@ description: Test skill
         # Items with no platform info are excluded
         all_filtered = claude_items + vscode_items
         assert all(item.name != "no-platform" for item in all_filtered)
+
+
+# ============================================================================
+# Fixtures for marketplace auto-discovery fallback tests
+# ============================================================================
+
+
+@pytest.fixture
+def marketplace_repo_empty_plugins(tmp_path: Path) -> Path:
+    """Create a marketplace repo where plugins have empty item arrays.
+
+    Mimics rjmurillo/ai-agents: valid marketplace.json, but skills/agents/commands
+    arrays are empty. Content lives under the plugin's source directory.
+    """
+    plugin_dir = tmp_path / ".claude-plugin"
+    plugin_dir.mkdir(parents=True)
+    (plugin_dir / "marketplace.json").write_text(
+        """{
+  "name": "ai-agents",
+  "owner": {"name": "Test Author"},
+  "plugins": [
+    {
+      "name": "claude-agents",
+      "description": "Agents for Claude Code",
+      "source": "./src/claude",
+      "skills": [],
+      "agents": [],
+      "commands": []
+    }
+  ]
+}"""
+    )
+
+    # Content under src/claude (the plugin's source directory)
+    src_dir = tmp_path / "src" / "claude"
+    src_dir.mkdir(parents=True)
+    (src_dir / "analyst.md").write_text(
+        """---
+name: analyst
+description: Research specialist
+---
+
+# Analyst Agent
+"""
+    )
+    (src_dir / "planner.md").write_text(
+        """---
+name: planner
+description: Planning specialist
+---
+
+# Planner Agent
+"""
+    )
+
+    skill_dir = src_dir / "skills" / "github"
+    skill_dir.mkdir(parents=True)
+    (skill_dir / "SKILL.md").write_text(
+        """---
+name: github
+description: GitHub operations
+---
+
+# GitHub Skill
+"""
+    )
+
+    commands_dir = src_dir / ".claude" / "commands"
+    commands_dir.mkdir(parents=True)
+    (commands_dir / "deploy.md").write_text(
+        """---
+name: deploy
+description: Deploy command
+---
+
+# Deploy
+"""
+    )
+
+    return tmp_path
+
+
+@pytest.fixture
+def marketplace_repo_mixed_plugins(tmp_path: Path) -> Path:
+    """Create a marketplace repo with one explicit plugin and one empty plugin."""
+    plugin_dir = tmp_path / ".claude-plugin"
+    plugin_dir.mkdir(parents=True)
+
+    # Create agent files for explicit plugin
+    agents_dir = tmp_path / "agents"
+    agents_dir.mkdir(parents=True)
+    (agents_dir / "explicit-agent.md").write_text(
+        """---
+name: explicit-agent
+description: Explicitly listed agent
+---
+
+# Explicit Agent
+"""
+    )
+
+    # Create content for auto-discovered plugin
+    auto_dir = tmp_path / "src" / "auto"
+    auto_dir.mkdir(parents=True)
+    (auto_dir / "auto-agent.md").write_text(
+        """---
+name: auto-agent
+description: Auto-discovered agent
+---
+
+# Auto Agent
+"""
+    )
+
+    (plugin_dir / "marketplace.json").write_text(
+        """{
+  "name": "mixed-marketplace",
+  "plugins": [
+    {
+      "name": "explicit-plugin",
+      "source": "./",
+      "agents": ["./agents/explicit-agent.md"],
+      "skills": [],
+      "commands": []
+    },
+    {
+      "name": "auto-plugin",
+      "source": "./src/auto",
+      "skills": [],
+      "agents": [],
+      "commands": []
+    }
+  ]
+}"""
+    )
+
+    return tmp_path
+
+
+# ============================================================================
+# Tests for marketplace auto-discovery fallback (Bug 1)
+# ============================================================================
+
+
+class TestMarketplaceAutoDiscoveryFallback:
+    """Tests for per-plugin auto-discovery when item arrays are empty."""
+
+    def test_empty_arrays_trigger_auto_discovery(
+        self, discovery: Discovery, marketplace_repo_empty_plugins: Path
+    ) -> None:
+        """Empty skills/agents/commands arrays trigger auto-discovery in source dir."""
+        items = discovery.discover_from_marketplace(marketplace_repo_empty_plugins)
+
+        names = {i.name for i in items}
+        assert "analyst" in names
+        assert "planner" in names
+        assert len(items) >= 2
+
+    def test_auto_discovered_items_get_plugin_name(
+        self, discovery: Discovery, marketplace_repo_empty_plugins: Path
+    ) -> None:
+        """Auto-discovered items are stamped with the plugin name."""
+        items = discovery.discover_from_marketplace(marketplace_repo_empty_plugins)
+
+        for item in items:
+            assert item.frontmatter.get("plugin") == "claude-agents"
+
+    def test_relative_paths_are_repo_rooted(
+        self, discovery: Discovery, marketplace_repo_empty_plugins: Path
+    ) -> None:
+        """Relative paths are computed from repo root, not source directory."""
+        items = discovery.discover_from_marketplace(marketplace_repo_empty_plugins)
+
+        analyst = next(i for i in items if i.name == "analyst")
+        assert analyst.relative_path.startswith("src/claude/")
+
+    def test_nonexistent_source_dir_returns_empty(
+        self, discovery: Discovery, tmp_path: Path
+    ) -> None:
+        """Plugin with nonexistent source dir returns no items."""
+        plugin_dir = tmp_path / ".claude-plugin"
+        plugin_dir.mkdir(parents=True)
+        (plugin_dir / "marketplace.json").write_text(
+            """{
+  "name": "test",
+  "plugins": [
+    {
+      "name": "missing",
+      "source": "./nonexistent",
+      "skills": [],
+      "agents": [],
+      "commands": []
+    }
+  ]
+}"""
+        )
+
+        items = discovery.discover_from_marketplace(tmp_path)
+        assert items == []
+
+    def test_mixed_explicit_and_empty_plugins(
+        self, discovery: Discovery, marketplace_repo_mixed_plugins: Path
+    ) -> None:
+        """Explicit plugins use arrays; empty plugins use auto-discovery."""
+        items = discovery.discover_from_marketplace(marketplace_repo_mixed_plugins)
+
+        names = {i.name for i in items}
+        assert "explicit-agent" in names
+        assert "auto-agent" in names
+
+        explicit = next(i for i in items if i.name == "explicit-agent")
+        assert explicit.frontmatter["plugin"] == "explicit-plugin"
+
+        auto = next(i for i in items if i.name == "auto-agent")
+        assert auto.frontmatter["plugin"] == "auto-plugin"
+
+    def test_existing_explicit_plugins_still_work(
+        self, discovery: Discovery, marketplace_repo: Path
+    ) -> None:
+        """Plugins with explicit items still discover them correctly."""
+        items = discovery.discover_from_marketplace(marketplace_repo)
+
+        assert len(items) == 4
+        names = {i.name for i in items}
+        assert "pdf" in names
+        assert "docx" in names
+        assert "pdf-agent" in names
+        assert "pdf-process" in names
+
+    def test_skills_discovered_in_source_dir(
+        self, discovery: Discovery, marketplace_repo_empty_plugins: Path
+    ) -> None:
+        """Skills under the source directory are auto-discovered."""
+        items = discovery.discover_from_marketplace(marketplace_repo_empty_plugins)
+
+        skills = [i for i in items if i.item_type == "skill"]
+        assert len(skills) == 1
+        assert skills[0].name == "github"
+        assert skills[0].frontmatter["plugin"] == "claude-agents"
+
+    def test_commands_discovered_in_source_dir(
+        self, discovery: Discovery, marketplace_repo_empty_plugins: Path
+    ) -> None:
+        """Commands under the source directory are auto-discovered."""
+        items = discovery.discover_from_marketplace(marketplace_repo_empty_plugins)
+
+        commands = [i for i in items if i.item_type == "command"]
+        assert len(commands) == 1
+        assert commands[0].name == "deploy"
+        assert commands[0].frontmatter["plugin"] == "claude-agents"
+
+
+class TestRepoWideFallback:
+    """Tests for repo-wide fallback when marketplace discovery yields nothing."""
+
+    def test_marketplace_no_items_falls_back(self, discovery: Discovery, tmp_path: Path) -> None:
+        """When marketplace discovery returns 0 items, repo-wide auto-discovery runs."""
+        # Marketplace file with plugin pointing to nonexistent source
+        plugin_dir = tmp_path / ".claude-plugin"
+        plugin_dir.mkdir(parents=True)
+        (plugin_dir / "marketplace.json").write_text(
+            """{
+  "name": "test",
+  "plugins": [
+    {
+      "name": "empty",
+      "source": "./nonexistent",
+      "skills": [],
+      "agents": [],
+      "commands": []
+    }
+  ]
+}"""
+        )
+
+        # Place agents at repo root level (outside nonexistent source dir)
+        (tmp_path / "fallback-agent.md").write_text(
+            """---
+name: fallback-agent
+description: Found by repo-wide fallback
+---
+
+# Fallback
+"""
+        )
+
+        items = discovery.discover_all(tmp_path, None)
+        names = {i.name for i in items}
+        assert "fallback-agent" in names
+
+    def test_valid_marketplace_no_repo_fallback(
+        self, discovery: Discovery, marketplace_repo: Path
+    ) -> None:
+        """Valid marketplace discovery does NOT trigger repo-wide fallback."""
+        items = discovery.discover_all(marketplace_repo, None)
+
+        # Should get exactly the marketplace items, not extras from repo scan
+        assert len(items) == 4
+        names = {i.name for i in items}
+        assert "pdf" in names
+        assert "docx" in names
+
+    def test_empty_plugin_auto_discovery_no_repo_fallback(
+        self, discovery: Discovery, marketplace_repo_empty_plugins: Path
+    ) -> None:
+        """Per-plugin auto-discovery finding items prevents repo-wide fallback."""
+        items = discovery.discover_all(marketplace_repo_empty_plugins, None)
+
+        # Items found via per-plugin fallback, repo-wide fallback should not run
+        names = {i.name for i in items}
+        assert "analyst" in names
+        assert "planner" in names
+
+
+class TestPluginHasExplicitItems:
+    """Tests for _plugin_has_explicit_items helper."""
+
+    def test_all_empty_returns_false(self, discovery: Discovery) -> None:
+        """All-empty arrays return False."""
+        from skill_installer.registry import MarketplacePlugin
+
+        plugin = MarketplacePlugin(name="empty", skills=[], agents=[], commands=[])
+        assert discovery._plugin_has_explicit_items(plugin) is False
+
+    def test_skills_non_empty_returns_true(self, discovery: Discovery) -> None:
+        """Non-empty skills returns True."""
+        from skill_installer.registry import MarketplacePlugin
+
+        plugin = MarketplacePlugin(name="test", skills=["./s1"], agents=[], commands=[])
+        assert discovery._plugin_has_explicit_items(plugin) is True
+
+    def test_agents_non_empty_returns_true(self, discovery: Discovery) -> None:
+        """Non-empty agents returns True."""
+        from skill_installer.registry import MarketplacePlugin
+
+        plugin = MarketplacePlugin(name="test", skills=[], agents=["./a1"], commands=[])
+        assert discovery._plugin_has_explicit_items(plugin) is True
+
+    def test_commands_non_empty_returns_true(self, discovery: Discovery) -> None:
+        """Non-empty commands returns True."""
+        from skill_installer.registry import MarketplacePlugin
+
+        plugin = MarketplacePlugin(name="test", skills=[], agents=[], commands=["./c1"])
+        assert discovery._plugin_has_explicit_items(plugin) is True
+
+    def test_all_non_empty_returns_true(self, discovery: Discovery) -> None:
+        """All arrays non-empty returns True."""
+        from skill_installer.registry import MarketplacePlugin
+
+        plugin = MarketplacePlugin(name="test", skills=["./s1"], agents=["./a1"], commands=["./c1"])
+        assert discovery._plugin_has_explicit_items(plugin) is True
+
+
+class TestScanRootParameter:
+    """Tests for scan_root parameter on auto-discover methods."""
+
+    def test_scan_root_scopes_agent_discovery(self, discovery: Discovery, tmp_path: Path) -> None:
+        """scan_root restricts agent globbing to the specified directory."""
+        # Agent outside scan root
+        (tmp_path / "outside.md").write_text(
+            """---
+name: outside
+description: Outside scan root
+---
+"""
+        )
+
+        # Agent inside scan root
+        sub_dir = tmp_path / "sub"
+        sub_dir.mkdir()
+        (sub_dir / "inside.md").write_text(
+            """---
+name: inside
+description: Inside scan root
+---
+"""
+        )
+
+        items = discovery._auto_discover_agents(tmp_path, scan_root=sub_dir)
+        names = {i.name for i in items}
+        assert "inside" in names
+        assert "outside" not in names
+
+    def test_scan_root_none_uses_repo_path(self, discovery: Discovery, sample_repo: Path) -> None:
+        """scan_root=None preserves existing behavior (uses repo_path)."""
+        items_default = discovery._auto_discover_agents(sample_repo)
+        items_none = discovery._auto_discover_agents(sample_repo, scan_root=None)
+
+        assert len(items_default) == len(items_none)
+        assert {i.name for i in items_default} == {i.name for i in items_none}
+
+    def test_scan_root_relative_paths_from_repo_root(
+        self, discovery: Discovery, tmp_path: Path
+    ) -> None:
+        """Relative paths are computed from repo_path, not scan_root."""
+        sub_dir = tmp_path / "src" / "agents"
+        sub_dir.mkdir(parents=True)
+        (sub_dir / "test.md").write_text(
+            """---
+name: test
+description: Test
+---
+"""
+        )
+
+        items = discovery._auto_discover_agents(tmp_path, scan_root=sub_dir)
+        assert len(items) == 1
+        assert items[0].relative_path == "src/agents/test.md"
+
+    def test_scan_root_scopes_skill_discovery(self, discovery: Discovery, tmp_path: Path) -> None:
+        """scan_root restricts skill globbing to the specified directory."""
+        # Skill outside scan root
+        outside_skill = tmp_path / "outside_skill"
+        outside_skill.mkdir()
+        (outside_skill / "SKILL.md").write_text(
+            """---
+name: outside
+---
+"""
+        )
+
+        # Skill inside scan root
+        sub_dir = tmp_path / "sub"
+        inside_skill = sub_dir / "inside_skill"
+        inside_skill.mkdir(parents=True)
+        (inside_skill / "SKILL.md").write_text(
+            """---
+name: inside
+---
+"""
+        )
+
+        items = discovery._auto_discover_skills(tmp_path, scan_root=sub_dir)
+        names = {i.name for i in items}
+        assert "inside" in names
+        assert "outside" not in names
+
+    def test_scan_root_scopes_command_discovery(self, discovery: Discovery, tmp_path: Path) -> None:
+        """scan_root restricts command globbing to the specified directory."""
+        # Command outside scan root
+        outside_cmd = tmp_path / ".claude" / "commands"
+        outside_cmd.mkdir(parents=True)
+        (outside_cmd / "outside.md").write_text(
+            """---
+name: outside
+description: Outside
+---
+"""
+        )
+
+        # Command inside scan root
+        sub_dir = tmp_path / "sub"
+        inside_cmd = sub_dir / ".claude" / "commands"
+        inside_cmd.mkdir(parents=True)
+        (inside_cmd / "inside.md").write_text(
+            """---
+name: inside
+description: Inside
+---
+"""
+        )
+
+        items = discovery._auto_discover_commands(tmp_path, scan_root=sub_dir)
+        names = {i.name for i in items}
+        assert "inside" in names
+        assert "outside" not in names
+
+    def test_plugin_name_stamped_with_scan_root(self, discovery: Discovery, tmp_path: Path) -> None:
+        """plugin_name is stamped into frontmatter when using scan_root."""
+        sub_dir = tmp_path / "src"
+        sub_dir.mkdir()
+        (sub_dir / "agent.md").write_text(
+            """---
+name: stamped
+description: Test
+---
+"""
+        )
+
+        items = discovery._auto_discover_agents(
+            tmp_path, scan_root=sub_dir, plugin_name="my-plugin"
+        )
+        assert len(items) == 1
+        assert items[0].frontmatter["plugin"] == "my-plugin"
