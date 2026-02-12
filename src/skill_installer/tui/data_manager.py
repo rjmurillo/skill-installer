@@ -195,7 +195,7 @@ class DataManager:
         Returns:
             Display name from marketplace.json or default.
         """
-        marketplace_file = repo_path / "marketplace.json"
+        marketplace_file = repo_path / ".claude-plugin" / "marketplace.json"
         if marketplace_file.exists():
             try:
                 with open(marketplace_file) as f:

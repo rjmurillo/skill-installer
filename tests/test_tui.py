@@ -1242,7 +1242,9 @@ class TestDataManager:
 
         from skill_installer.tui.data_manager import DataManager
 
-        marketplace_file = tmp_path / "marketplace.json"
+        plugin_dir = tmp_path / ".claude-plugin"
+        plugin_dir.mkdir(parents=True)
+        marketplace_file = plugin_dir / "marketplace.json"
         marketplace_file.write_text(json.dumps({"name": "Custom Name"}))
 
         manager = DataManager()
@@ -1254,7 +1256,9 @@ class TestDataManager:
         """Test _get_display_name handles invalid JSON gracefully."""
         from skill_installer.tui.data_manager import DataManager
 
-        marketplace_file = tmp_path / "marketplace.json"
+        plugin_dir = tmp_path / ".claude-plugin"
+        plugin_dir.mkdir(parents=True)
+        marketplace_file = plugin_dir / "marketplace.json"
         marketplace_file.write_text("not valid json")
 
         manager = DataManager()

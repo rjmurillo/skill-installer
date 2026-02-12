@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -10,7 +11,9 @@ from typing import TYPE_CHECKING
 import yaml
 
 if TYPE_CHECKING:
-    from skill_installer.registry import MarketplaceManifest
+    from skill_installer.registry import MarketplaceManifest, MarketplacePlugin
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -104,10 +107,134 @@ class Discovery:
         try:
             return MarketplaceManifest.from_file(marketplace_path)
         except (json.JSONDecodeError, ValueError):
+            logger.warning("Failed to parse marketplace manifest: %s", marketplace_path)
             return None
+
+    def _plugin_has_explicit_items(self, plugin: MarketplacePlugin) -> bool:
+        """Check if a plugin has any explicitly listed items.
+
+        Args:
+            plugin: Marketplace plugin definition.
+
+        Returns:
+            True if any of skills, agents, or commands is non-empty.
+        """
+        return bool(plugin.skills or plugin.agents or plugin.commands)
+
+    def _discover_explicit_plugin_items(
+        self, repo_path: Path, plugin: MarketplacePlugin
+    ) -> list[DiscoveredItem]:
+        """Discover items explicitly listed in a plugin definition.
+
+        Args:
+            repo_path: Path to the repository root.
+            plugin: Marketplace plugin with explicit item paths.
+
+        Returns:
+            List of discovered items from the plugin's explicit arrays.
+        """
+        items: list[DiscoveredItem] = []
+
+        for skill_path_str in plugin.skills:
+            skill_path = repo_path / skill_path_str.lstrip("./")
+            if skill_path.is_dir():
+                item = self._parse_skill_dir(
+                    skill_path, plugin_name=plugin.name, repo_path=repo_path
+                )
+                if item:
+                    items.append(item)
+
+        for agent_path_str in plugin.agents:
+            agent_path = repo_path / agent_path_str.lstrip("./")
+            if agent_path.is_file():
+                item = self._parse_agent_file(
+                    agent_path,
+                    "agent",
+                    repo_path=repo_path,
+                    plugin_name=plugin.name,
+                )
+                if item:
+                    items.append(item)
+
+        for command_path_str in plugin.commands:
+            command_path = repo_path / command_path_str.lstrip("./")
+            if command_path.is_file():
+                item = self._parse_agent_file(
+                    command_path,
+                    "command",
+                    require_frontmatter=True,
+                    repo_path=repo_path,
+                    plugin_name=plugin.name,
+                )
+                if item:
+                    items.append(item)
+
+        return items
+
+    def _auto_discover_plugin_items(
+        self, repo_path: Path, plugin: MarketplacePlugin
+    ) -> list[DiscoveredItem]:
+        """Auto-discover items within a plugin's source directory.
+
+        Used as fallback when a plugin has empty skills/agents/commands arrays
+        but specifies a source directory.
+
+        Args:
+            repo_path: Path to the repository root.
+            plugin: Marketplace plugin with a source path.
+
+        Returns:
+            List of discovered items scoped to the plugin's source directory.
+        """
+        source_dir = repo_path / plugin.source.lstrip("./")
+        if not source_dir.is_dir():
+            logger.debug(
+                "Plugin '%s' source directory does not exist: %s",
+                plugin.name,
+                source_dir,
+            )
+            return []
+
+        items: list[DiscoveredItem] = []
+        items.extend(
+            self._auto_discover_agents(repo_path, scan_root=source_dir, plugin_name=plugin.name)
+        )
+        items.extend(
+            self._auto_discover_skills(repo_path, scan_root=source_dir, plugin_name=plugin.name)
+        )
+        items.extend(
+            self._auto_discover_commands(repo_path, scan_root=source_dir, plugin_name=plugin.name)
+        )
+
+        logger.debug(
+            "Auto-discovered %d items for plugin '%s' in %s",
+            len(items),
+            plugin.name,
+            source_dir,
+        )
+        return items
+
+    def _auto_discover_all(self, repo_path: Path) -> list[DiscoveredItem]:
+        """Run all auto-discovery methods on the full repository.
+
+        Args:
+            repo_path: Path to the repository root.
+
+        Returns:
+            List of all discovered items.
+        """
+        items: list[DiscoveredItem] = []
+        items.extend(self._auto_discover_agents(repo_path))
+        items.extend(self._auto_discover_skills(repo_path))
+        items.extend(self._auto_discover_commands(repo_path))
+        return items
 
     def discover_from_marketplace(self, repo_path: Path) -> list[DiscoveredItem]:
         """Discover items using marketplace manifest.
+
+        For each plugin, uses explicit item arrays if present. Falls back to
+        auto-discovery within the plugin's source directory when all arrays
+        are empty.
 
         Args:
             repo_path: Path to the repository root.
@@ -119,44 +246,31 @@ class Discovery:
         if not manifest:
             return []
 
+        logger.debug(
+            "Marketplace manifest has %d plugin(s) for %s",
+            len(manifest.plugins),
+            repo_path.name,
+        )
+
         items: list[DiscoveredItem] = []
         for plugin in manifest.plugins:
-            for skill_path_str in plugin.skills:
-                skill_path = repo_path / skill_path_str.lstrip("./")
-                if skill_path.is_dir():
-                    item = self._parse_skill_dir(skill_path, plugin_name=plugin.name)
-                    if item:
-                        items.append(item)
-            for agent_path_str in plugin.agents:
-                agent_path = repo_path / agent_path_str.lstrip("./")
-                if agent_path.is_file():
-                    item = self._parse_agent_file(
-                        agent_path,
-                        "agent",
-                        repo_path=repo_path,
-                        plugin_name=plugin.name,
-                    )
-                    if item:
-                        items.append(item)
-            for command_path_str in plugin.commands:
-                command_path = repo_path / command_path_str.lstrip("./")
-                if command_path.is_file():
-                    item = self._parse_agent_file(
-                        command_path,
-                        "command",
-                        require_frontmatter=True,
-                        repo_path=repo_path,
-                        plugin_name=plugin.name,
-                    )
-                    if item:
-                        items.append(item)
+            if self._plugin_has_explicit_items(plugin):
+                plugin_items = self._discover_explicit_plugin_items(repo_path, plugin)
+            else:
+                plugin_items = self._auto_discover_plugin_items(repo_path, plugin)
+
+            logger.debug("Plugin '%s': %d items discovered", plugin.name, len(plugin_items))
+            items.extend(plugin_items)
 
         return items
 
     def discover_all(self, repo_path: Path, platform: str | None) -> list[DiscoveredItem]:
         """Discover all items in a repository.
 
-        For marketplace-enabled repos, uses the marketplace manifest.
+        For marketplace-enabled repos, uses the marketplace manifest with
+        per-plugin fallback. If marketplace discovery still yields no items,
+        falls back to full repo auto-discovery.
+
         Otherwise, auto-discovers:
         - Agents: *.agent.md files, or *.md files with frontmatter containing 'name'
         - Skills: Directories containing SKILL.md
@@ -169,18 +283,26 @@ class Discovery:
         Returns:
             List of discovered items, filtered by platform if specified.
         """
-        # Check if this is a marketplace repo first
         if self.is_marketplace_repo(repo_path):
             items = self.discover_from_marketplace(repo_path)
+            if not items:
+                logger.warning(
+                    "Marketplace discovery returned no items for %s, "
+                    "falling back to auto-discovery",
+                    repo_path.name,
+                )
+                items = self._auto_discover_all(repo_path)
         else:
-            items: list[DiscoveredItem] = []
-            items.extend(self._auto_discover_agents(repo_path))
-            items.extend(self._auto_discover_skills(repo_path))
-            items.extend(self._auto_discover_commands(repo_path))
+            items = self._auto_discover_all(repo_path)
 
         return self._filter_by_platform(items, platform) if platform else items
 
-    def _auto_discover_agents(self, repo_path: Path) -> list[DiscoveredItem]:
+    def _auto_discover_agents(
+        self,
+        repo_path: Path,
+        scan_root: Path | None = None,
+        plugin_name: str | None = None,
+    ) -> list[DiscoveredItem]:
         """Auto-discover agents and prompts by searching for agent/prompt files.
 
         Discovers:
@@ -189,36 +311,43 @@ class Discovery:
         - *.md files with valid frontmatter (name field required)
 
         Args:
-            repo_path: Path to the repository root.
+            repo_path: Path to the repository root (used for relative path computation).
+            scan_root: Directory to glob from. Defaults to repo_path.
+            plugin_name: Optional plugin name to stamp into frontmatter.
 
         Returns:
             List of discovered agents and prompts.
         """
+        search_root = scan_root or repo_path
         items = []
         seen_paths: set[Path] = set()
 
         # 1. Find all .agent.md files (unambiguous agent marker)
-        for agent_file in repo_path.glob("**/*.agent.md"):
+        for agent_file in search_root.glob("**/*.agent.md"):
             if any(skip_dir in agent_file.parts for skip_dir in self.SKIP_DIRS):
                 continue
             if agent_file not in seen_paths:
-                item = self._parse_agent_file(agent_file, "agent", repo_path=repo_path)
+                item = self._parse_agent_file(
+                    agent_file, "agent", repo_path=repo_path, plugin_name=plugin_name
+                )
                 if item:
                     items.append(item)
                     seen_paths.add(agent_file)
 
         # 2. Find all .prompt.md files (VS Code prompts)
-        for prompt_file in repo_path.glob("**/*.prompt.md"):
+        for prompt_file in search_root.glob("**/*.prompt.md"):
             if any(skip_dir in prompt_file.parts for skip_dir in self.SKIP_DIRS):
                 continue
             if prompt_file not in seen_paths:
-                item = self._parse_agent_file(prompt_file, "prompt", repo_path=repo_path)
+                item = self._parse_agent_file(
+                    prompt_file, "prompt", repo_path=repo_path, plugin_name=plugin_name
+                )
                 if item:
                     items.append(item)
                     seen_paths.add(prompt_file)
 
         # 3. Find .md files with valid agent frontmatter (must have 'name' field)
-        for md_file in repo_path.glob("**/*.md"):
+        for md_file in search_root.glob("**/*.md"):
             if any(skip_dir in md_file.parts for skip_dir in self.SKIP_DIRS):
                 continue
             if md_file.name in self.SKIP_FILES:
@@ -231,7 +360,11 @@ class Discovery:
                 continue
 
             item = self._parse_agent_file(
-                md_file, "agent", require_frontmatter=True, repo_path=repo_path
+                md_file,
+                "agent",
+                require_frontmatter=True,
+                repo_path=repo_path,
+                plugin_name=plugin_name,
             )
             if item:
                 items.append(item)
@@ -261,18 +394,26 @@ class Discovery:
 
         return items
 
-    def _auto_discover_skills(self, repo_path: Path) -> list[DiscoveredItem]:
+    def _auto_discover_skills(
+        self,
+        repo_path: Path,
+        scan_root: Path | None = None,
+        plugin_name: str | None = None,
+    ) -> list[DiscoveredItem]:
         """Auto-discover skills by searching for SKILL.md files recursively.
 
         Args:
-            repo_path: Path to the repository root.
+            repo_path: Path to the repository root (used for relative path computation).
+            scan_root: Directory to glob from. Defaults to repo_path.
+            plugin_name: Optional plugin name to stamp into frontmatter.
 
         Returns:
             List of discovered skills.
         """
+        search_root = scan_root or repo_path
         items = []
 
-        for skill_file in repo_path.glob("**/SKILL.md"):
+        for skill_file in search_root.glob("**/SKILL.md"):
             # Skip if in a directory we should ignore
             if any(skip_dir in skill_file.parts for skip_dir in self.SKIP_DIRS):
                 continue
@@ -284,25 +425,33 @@ class Discovery:
             if skill_path == repo_path:
                 continue
 
-            item = self._parse_skill_dir(skill_path, repo_path=repo_path)
+            item = self._parse_skill_dir(skill_path, repo_path=repo_path, plugin_name=plugin_name)
             if item:
                 items.append(item)
 
         return items
 
-    def _auto_discover_commands(self, repo_path: Path) -> list[DiscoveredItem]:
+    def _auto_discover_commands(
+        self,
+        repo_path: Path,
+        scan_root: Path | None = None,
+        plugin_name: str | None = None,
+    ) -> list[DiscoveredItem]:
         """Auto-discover commands by searching for .claude/commands/ directories.
 
         Args:
-            repo_path: Path to the repository root.
+            repo_path: Path to the repository root (used for relative path computation).
+            scan_root: Directory to glob from. Defaults to repo_path.
+            plugin_name: Optional plugin name to stamp into frontmatter.
 
         Returns:
             List of discovered commands.
         """
+        search_root = scan_root or repo_path
         items = []
 
         # Search for commands directories (typically .claude/commands/)
-        for commands_dir in repo_path.glob("**/.claude/commands"):
+        for commands_dir in search_root.glob("**/.claude/commands"):
             if not commands_dir.is_dir():
                 continue
             if any(skip_dir in commands_dir.parts for skip_dir in self.SKIP_DIRS):
@@ -312,7 +461,11 @@ class Discovery:
             for path in commands_dir.glob("*.md"):
                 if path.is_file() and path.name not in self.SKIP_FILES:
                     item = self._parse_agent_file(
-                        path, "command", require_frontmatter=True, repo_path=repo_path
+                        path,
+                        "command",
+                        require_frontmatter=True,
+                        repo_path=repo_path,
+                        plugin_name=plugin_name,
                     )
                     if item:
                         items.append(item)
